@@ -1,0 +1,76 @@
+IdentifierOrKeyword = @{ (XID_START ~ XID_CONTINUE*) | ("_" ~ XID_CONTINUE+) }
+RawIdentifier = @{ "r#" ~ IdentifierOrKeyword }
+NonKeywordIdentifier = @{ IdentifierOrKeyword }
+Identifier = @{ RawIdentifier | NonKeywordIdentifier }
+
+IsolatedCr = @{ "\r" ~ (EOI | !"\n") }
+
+// literals
+
+Suffix = @{ IdentifierOrKeyword }
+SuffixNoE = @{ !^"e" ~ Suffix }
+
+//// numeric
+
+BinLiteral = @{ "0b" ~ "_"* ~ ASCII_BIN_DIGIT ~ (ASCII_BIN_DIGIT | "_")* }
+OctLiteral = @{ "0o" ~ "_"* ~ ASCII_OCT_DIGIT ~ (ASCII_OCT_DIGIT | "_")* }
+DecLiteral = @{ ASCII_DIGIT ~ (ASCII_DIGIT | "_")* }
+HexLiteral = @{ "0x" ~ "_"* ~ ASCII_HEX_DIGIT ~ (ASCII_HEX_DIGIT | "_")* }
+IntegerLiteral = @{ (DecLiteral | BinLiteral | OctLiteral | HexLiteral) ~ SuffixNoE? }
+
+FloatExponent = @{ ^"e" ~ ("+" | "-")? ~ "_"* ~ DecLiteral }
+FloatLiteral = @{
+	(DecLiteral ~ ("." ~ DecLiteral)? ~ FloatExponent ~ Suffix?)
+	| (DecLiteral ~ "." ~ DecLiteral ~ SuffixNoE?)
+	| (DecLiteral ~ "." ~ (EOI | !("." | "_" | XID_START)))
+}
+
+ReservedNumber = @{
+	(BinLiteral ~ '2'..'9')
+	| (OctLiteral ~ '8'..'9')
+	| ((BinLiteral | OctLiteral | HexLiteral) ~ "." ~ (!("." | "_" | XID_START) ~ ANY))
+	| ((BinLiteral | OctLiteral) ~ ^"e")
+	| ("0b" ~ "_"* ~ (EOI | (!ASCII_BIN_DIGIT ~ ANY)))
+	| ("0o" ~ "_"* ~ (EOI | (!ASCII_OCT_DIGIT ~ ANY)))
+	| ("0x" ~ "_"* ~ (EOI | (!ASCII_HEX_DIGIT ~ ANY)))
+	| (DecLiteral ~ ("." ~ DecLiteral)? ~ ^"e" ~ ("+" | "-")? ~ (EOI | (!ASCII_DIGIT ~ ANY)))
+}
+
+//// text
+
+QuoteEscape = @{ "\\'" | "\\\"" }
+AsciiEscape = @{ ("\\x" ~ ASCII_OCT_DIGIT ~ ASCII_HEX_DIGIT) | "\\n" | "\\r" | "\\t" | "\\\\" | "\\0" }
+UnicodeEscape = @{ "\\u{" ~ ASCII_HEX_DIGIT{1,6} ~ "}" }
+CharLiteral = @{
+	"'" ~ ((!("'" | "\\" | "\n" | "\r" | "\t") ~ ANY) | QuoteEscape | AsciiEscape | UnicodeEscape) ~ "'" ~ Suffix?
+}
+
+StringContinue = { "\\\n" }
+StringLiteral = @{ "\"" ~ ((!("\"" | "\\" | IsolatedCr) ~ ANY) | QuoteEscape | AsciiEscape | UnicodeEscape | StringContinue)* ~ "\"" ~ Suffix? }
+
+RawStringContent = @{ ("\"" ~ (!IsolatedCr ~ ANY)* ~ "\"") | ("#" ~ RawStringContent ~ "#") }
+RawStringLiteral = @{ "r" ~ RawStringContent ~ Suffix? }
+
+AsciiForChar = @{ !("'" | "\\" | "\n" | "\r" | "\t") ~ ASCII }
+ByteEscape = @{ ("\\x" ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT) | "\\n" | "\\r" | "\\t" | "\\\\" | "\\0" | "\\'" | "\\\"" }
+ByteLiteral = @{ "b'" ~ (AsciiForChar | ByteEscape) ~ "'" ~ Suffix? }
+
+AsciiForString = @{ !("\"" | "\\" | IsolatedCr) ~ ASCII }
+ByteStringLiteral = @{ "b\"" ~ (AsciiForString | ByteEscape | StringContinue)* ~ "\"" ~ Suffix? }
+
+RawByteStringContent = @{ ("\"" ~ ASCII* ~ "\"") | ("#" ~ RawByteStringContent ~ "#") }
+RawByteStringLiteral = @{ "br" ~ RawByteStringContent ~ Suffix? }
+
+// comments
+
+LineComment = @{ ("//" ~ ((!("/" | "!" | "\n") ~ ANY) | "//") ~ (!"\n" ~ ANY)*) | "//" }
+InnerLineDoc = @{ "//!" ~ (!("\n" | IsolatedCr) ~ ANY)* }
+OuterLineDoc = @{ "///" ~ ((!"/" ~ ANY) ~ (!("\n" | IsolatedCr) ~ ANY)*)? }
+
+InnerBlockDoc = @{ "/*!" ~ (BlockCommentOrDoc | (!("*/" | IsolatedCr) ~ ANY))* ~ "*/" }
+OuterBlockDoc = @{ "/**" ~ ((!"*" ~ ANY) | BlockCommentOrDoc) ~ (BlockCommentOrDoc | (!("*/" | IsolatedCr) ~ ANY))* ~ "*/" }
+BlockCommentOrDoc = @{ BlockComment | OuterBlockDoc | InnerBlockDoc }
+BlockComment = @{ ("/*" ~ ((!("*" | "!") ~ ANY) | "**" | BlockCommentOrDoc) ~ (BlockCommentOrDoc | (!"*/" ~ ANY))* ~ "*/") | "/**/" | "/***/" }
+
+COMMENT = _{ InnerLineDoc | OuterLineDoc | LineComment | InnerBlockDoc | OuterBlockDoc | BlockComment }
+WHITESPACE = _{ PATTERN_WHITE_SPACE }
