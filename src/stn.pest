@@ -1,8 +1,12 @@
 KwMod = @{ "mod" }
 KwDyn = @{ "dyn" }
+KwPub = @{ "pub" }
+KwTrue = @{ "true" }
+KwFalse = @{ "false" }
 KwMacro = @{ "macro" }
+KwExtern = @{ "extern" }
 
-StrictKeyword = @{ KwMod | KwDyn }
+StrictKeyword = @{ KwMod | KwDyn | KwExtern | KwTrue | KwFalse }
 ReservedKeyword = @{ KwMacro }
 
 IdentifierOrKeyword = @{ (XID_START ~ XID_CONTINUE*) | ("_" ~ XID_CONTINUE+) }
@@ -17,13 +21,17 @@ IsolatedCr = @{ "\r" ~ (EOI | !"\n") }
 Suffix = @{ XID_START ~ XID_CONTINUE* }
 SuffixNoE = @{ !^"e" ~ Suffix }
 
+Unit = { "(" ~ ")" }
+Boolean = { KwTrue | KwFalse }
+
 //// numeric
 
 BinLiteral = @{ "0b" ~ "_"* ~ ASCII_BIN_DIGIT ~ (ASCII_BIN_DIGIT | "_")* }
 OctLiteral = @{ "0o" ~ "_"* ~ ASCII_OCT_DIGIT ~ (ASCII_OCT_DIGIT | "_")* }
 DecLiteral = @{ ASCII_DIGIT ~ (ASCII_DIGIT | "_")* }
 HexLiteral = @{ "0x" ~ "_"* ~ ASCII_HEX_DIGIT ~ (ASCII_HEX_DIGIT | "_")* }
-IntegerLiteral = @{ (DecLiteral | BinLiteral | OctLiteral | HexLiteral) ~ SuffixNoE? }
+IntegerNoSuffix = @{ DecLiteral | BinLiteral | OctLiteral | HexLiteral }
+IntegerLiteral = @{ IntegerNoSuffix ~ SuffixNoE? }
 
 FloatExponent = @{ ^"e" ~ ("+" | "-")? ~ "_"* ~ DecLiteral }
 FloatLiteral = @{
@@ -81,3 +89,341 @@ BlockComment = @{ ("/*" ~ ((!("*" | "!") ~ ANY) | "**" | BlockCommentOrDoc) ~ (B
 
 COMMENT = _{ InnerLineDoc | OuterLineDoc | LineComment | InnerBlockDoc | OuterBlockDoc | BlockComment }
 WHITESPACE = _{ PATTERN_WHITE_SPACE }
+
+// meta
+
+LiteralExpression = {
+	Boolean
+	| IntegerLiteral
+	| FloatLiteral
+	| ByteLiteral
+	| StringLiteral
+	| RawStringLiteral
+	| ByteStringLiteral
+	| RawByteStringLiteral
+}
+Punctuation = @{
+	"<<="
+	| ">>="
+	| "..."
+	| "..="
+	| ".."
+	| "&&"
+	| "||"
+	| "<<"
+	| ">>"
+	| "+="
+	| "-="
+	| "*="
+	| "/="
+	| "%="
+	| "^="
+	| "&="
+	| "|="
+	| "=="
+	| "!="
+	| ">="
+	| "<="
+	| "::"
+	| "->"
+	| "=>"
+	| "@"
+	| "_"
+	| "."
+	| ">"
+	| "<"
+	| "="
+	| "+"
+	| "-"
+	| "*"
+	| "/"
+	| "%"
+	| "^"
+	| "!"
+	| "&"
+	| "|"
+	| ","
+	| ";"
+	| ":"
+	| "#"
+	| "$"
+	| "?"
+	| "~"
+}
+Token = {
+	IdentifierOrKeyword
+	| LiteralExpression
+	| Punctuation
+}
+
+//// paths
+
+SimplePathSegment = { Identifier | "super" | "self" | "stone" | "$stone" }
+SimplePath = { "::"? ~ SimplePathSegment ~ ("::" ~ SimplePathSegment)* }
+
+PathIdentSegment = { Identifier | "super" | "self" | "Self" | "stone" | "$stone" }
+
+PathInExpression = { "::"? ~ PathExprSegment ~ ("::" ~ PathExprSegment)* }
+PathExprSegment = { PathIdentSegment ~ ("::" ~ GenericArgs)? }
+
+QualifiedPathInExpression = { QualifiedPathType ~ ("::" ~ PathExprSegment)+ }
+QualifiedPathType = { "<" ~ Type ~ ("as" ~ TypePath)? ~ ">" }
+QualifiedPathInType = { QualifiedPathType ~ ("::" ~ TypePathSegment)+ }
+
+//// macros
+
+MacroInvocation = { SimplePath ~ "!" ~ DelimTokenTree }
+DelimTokenTree = {
+	("(" ~ TokenTree ~ ")")
+	| ("[" ~ TokenTree ~ "]")
+	| ("{" ~ TokenTree ~ "}")
+}
+TokenTree = { Token | DelimTokenTree }
+MacroInvocationSemi = {
+	(SimplePath ~ "!" ~ "(" ~ TokenTree* ~ ")" ~ ";")
+	| (SimplePath ~ "!" ~ "[" ~ TokenTree* ~ "]" ~ ";")
+	| (SimplePath ~ "!" ~ "{" ~ TokenTree* ~ "}")
+}
+
+//// attributes
+
+InnerAttribute = { "#" ~ "!" ~ "[" ~ Attr ~ "]" }
+OuterAttribute = { "#" ~ "[" ~ Attr ~ "]" }
+Attr = { SimplePath ~ AttrInput }
+AttrInput = { DelimTokenTree | ("=" ~ Expression) }
+
+//// visibility
+
+Visibility = {
+	KwPub
+	| (KwPub ~ "(" ~ "stone" ~ ")")
+}
+
+//// item
+
+Item = {
+	OuterAttribute*
+	~ (VisItem | MacroItem)
+}
+VisItem = {
+	Visibility?
+	~ (
+		Module
+	)
+}
+MacroItem = { MacroInvocationSemi }
+
+//// module
+
+Module = {
+	KwMod ~ Identifier ~ "{" ~
+		InnerAttribute* ~
+		Item* ~
+	"}"
+}
+
+//// patterns
+
+Pattern = { "|"? ~ PatternNoTopAlt ~ ("|" ~ PatternNoTopAlt)* }
+PatternNoTopAlt = {
+	PatternWithoutRange
+	// | RangePattern
+}
+PatternWithoutRange = {
+	LiteralPattern
+}
+LiteralPattern = {
+	KwTrue | KwFalse
+	| CharLiteral
+	| ByteLiteral
+	| StringLiteral
+	| RawStringLiteral
+	| ByteStringLiteral
+	| RawByteStringLiteral
+	| ("-"? ~ IntegerLiteral)
+}
+
+//// statement
+
+Statement = {
+	";"
+	| Item
+	| LetStatement
+	| ExpressionStatement
+	| MacroInvocationSemi
+}
+ExpressionStatement = {
+	(ExpressionWithoutBlock ~ ";")
+	| (ExpressionWithBlock ~ ";"?)
+}
+LetStatement = {
+	OuterAttribute* ~
+	"let" ~ PatternNoTopAlt ~ (":" ~ Type)? ~ "=" ~ Expression ~ ";"
+}
+
+//// expression
+
+Expression = { ExpressionWithoutBlock | ExpressionWithBlock }
+ExpressionWithoutBlock = {
+	OuterAttribute*
+	~ (
+		LiteralExpression
+		| PathExpression
+		| OperatorExpression
+		| GroupedExpression
+		| ArrayExpression
+		| IndexExpression
+		| TupleExpression
+		| TupleIndexingExpression
+		| StructExpression
+		| CallExpression
+		| MethodCallExpression
+		| FieldExpression
+		| ClosureExpression
+		| RangeExpression
+		| UnderscoreExpression
+		| MacroInvocation
+	)
+}
+ExpressionWithBlock = {
+	OuterAttribute*
+	~ (
+		BlockExpression
+	)
+}
+
+PathExpression = { PathInExpression | QualifiedPathInExpression }
+GroupedExpression = { "(" ~ Expression ~ ")" }
+
+ArrayExpression = { "[" ~ ArrayElements? ~ "]" }
+ArrayElements = {
+	(Expression ~ ("," ~ Expression)* ~ ","?)
+	| (Expression ~ ";" ~ Expression)
+}
+IndexExpression = { Expression ~ "[" ~ Expression ~ "]" }
+
+TupleExpression = { "(" ~ TupleElements? ~ ")" }
+TupleElements = { (Expression ~ ",")+ ~ Expression? }
+TupleIndexingExpression = { Expression ~ "." ~ TupleIndex }
+TupleIndex = @{ ASCII_DIGIT+ }
+
+StructExpression = { StructExprStruct | StructExprTuple | StructExprUnit }
+StructExprStruct = { PathInExpression ~ "{" ~ (StructExprFields | StructBase)? ~ "}" }
+StructExprFields = { StructExprField ~ ("," ~ StructExprField)* ~ (("," ~ StructBase) | ","?) }
+StructExprField = {
+	OuterAttribute*
+	~ (
+		Identifier
+		| ((Identifier | TupleIndex) ~ ":" ~ Expression)
+	)
+}
+StructBase = { ".." ~ Expression }
+StructExprTuple = { PathInExpression ~ "(" ~ (Expression ~ ("," ~ Expression)* ~ ","?)? ~ ")"}
+StructExprUnit = { PathInExpression }
+
+CallExpression = { Expression ~ "(" ~ CallParams? ~ ")" }
+CallParams = { Expression ~ ("," ~ Expression)* ~ ","? }
+
+MethodCallExpression = { Expression ~ "." ~ PathExprSegment ~ "(" ~ CallParams? ~ ")" }
+
+FieldExpression = { Expression ~ "." ~ Identifier }
+
+ClosureExpression = {
+	("||" | ("|" ~ ClosureParameters? ~ "|"))
+	~ (Expression | ("->" ~ TypeNoBounds ~ BlockExpression))
+}
+ClosureParameters = { ClosureParam ~ ("," ~ ClosureParam)* ~ ","? }
+ClosureParam = { OuterAttribute* ~ PatternNoTopAlt ~ (":" ~ Type)? }
+
+UnderscoreExpression = { "_" }
+
+RangeExpression = { RangeExpr | RangeFromExpr | RangeToExpr | RangeFullExpr | RangeInclusiveExpr | RangeToInclusiveExpr }
+RangeExpr = { Expression ~ ".." ~ Expression }
+RangeFromExpr = { Expression ~ ".." }
+RangeToExpr = { ".." ~ Expression }
+RangeFullExpr = { ".." }
+RangeInclusiveExpr = { Expression ~ "..=" ~ Expression }
+RangeToInclusiveExpr = { "..=" ~ Expression }
+
+BlockExpression = {
+	"{" ~
+	InnerAttribute* ~
+	Statements?
+	~ "}"
+}
+Statements = {
+	(Statement+)
+	| (Statement+ ~ ExpressionWithoutBlock)
+	| ExpressionWithoutBlock
+}
+
+////// operator
+
+OperatorExpression = {
+	BorrowExpression
+	| DereferenceExpression
+	| NegationExpression
+	| ArithmeticOrLogicalExpression
+	| ComparisonExpression
+	| LazyBooleanExpression
+	| TypeCastExpression
+}
+
+BorrowExpression = { ("&" | "&&") ~ Expression }
+DereferenceExpression = { "*" ~ Expression }
+NegationExpression = { ("-" ~ Expression) | ("!" ~ Expression) }
+ArithmeticOrLogicalExpression = {
+	Expression ~ ("+" | "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>") ~ Expression
+}
+ComparisonExpression = {
+	Expression ~ ("==" | "!=" | ">" | "<" | ">=" | "<=") ~ Expression
+}
+LazyBooleanExpression = { Expression ~ ("||" | "&&") ~ Expression }
+TypeCastExpression = { Expression ~ "as" ~ TypeNoBounds }
+
+//// type
+
+Type = {
+	TypeNoBounds
+	| ImplTraitType
+	| TraitObjectType
+}
+TypeNoBounds = {
+	ParenthesizedType
+}
+ParenthesizedType = { "(" ~ Type ~ ")" }
+
+ImplTraitType = { "impl" ~ TypeParamBounds }
+
+TraitObjectType = { "dyn" ~ TypeParamBounds }
+
+TypeParamBounds = { TypeParamBound ~ ("+" ~ TypeParamBound)* ~ "+"? }
+TypeParamBound = { TraitBound }
+TraitBound = {
+	("?"? ~ TypePath)
+	| ("(" ~ "?"? ~ TypePath ~ ")")
+}
+
+TypePath = { "::"? ~ TypePathSegment ~ ("::" ~ TypePathSegment)* }
+TypePathSegment = { PathIdentSegment ~ "::"? ~ (GenericArgs | TypePathFn)? }
+TypePathFn = { "(" ~ TypePathFnInputs? ~ ")" ~ ("->" ~ Type)? }
+TypePathFnInputs = { Type ~ ("," ~ Type)* ~ ","? }
+
+GenericArgs = {
+	("<" ~ ">")
+	| ("<" ~ GenericArg ~ ("," ~ GenericArg)* ~ ","? ~ ">")
+}
+GenericArg = { Type | GenericArgsConst | GenericArgsBinding }
+GenericArgsConst = {
+	BlockExpression
+	| LiteralExpression
+	| ("-" ~ LiteralExpression)
+	| SimplePathSegment
+}
+GenericArgsBinding = { Identifier ~ "=" ~ Type }
+
+//// doc
+
+Utf8Bom = { "\u{FEFF}" }
+Shebang = { "#!" ~ !"[" ~ (!"\n" ~ ANY)+ }
+Stone = { InnerAttribute* ~ Item* }
