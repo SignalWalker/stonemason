@@ -1,13 +1,19 @@
+KwMod = @{ "mod" }
+KwMacro = @{ "macro" }
+
+StrictKeyword = @{ KwMod }
+ReservedKeyword = @{ KwMacro }
+
 IdentifierOrKeyword = @{ (XID_START ~ XID_CONTINUE*) | ("_" ~ XID_CONTINUE+) }
 RawIdentifier = @{ "r#" ~ IdentifierOrKeyword }
-NonKeywordIdentifier = @{ IdentifierOrKeyword }
+NonKeywordIdentifier = @{ !(StrictKeyword | ReservedKeyword) ~ IdentifierOrKeyword }
 Identifier = @{ RawIdentifier | NonKeywordIdentifier }
 
 IsolatedCr = @{ "\r" ~ (EOI | !"\n") }
 
 // literals
 
-Suffix = @{ IdentifierOrKeyword }
+Suffix = @{ XID_START ~ XID_CONTINUE* }
 SuffixNoE = @{ !^"e" ~ Suffix }
 
 //// numeric
@@ -45,15 +51,15 @@ CharLiteral = @{
 	"'" ~ ((!("'" | "\\" | "\n" | "\r" | "\t") ~ ANY) | QuoteEscape | AsciiEscape | UnicodeEscape) ~ "'" ~ Suffix?
 }
 
+AsciiForChar = @{ !("'" | "\\" | "\n" | "\r" | "\t") ~ ASCII }
+ByteEscape = @{ ("\\x" ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT) | "\\n" | "\\r" | "\\t" | "\\\\" | "\\0" | "\\'" | "\\\"" }
+ByteLiteral = @{ "b'" ~ (AsciiForChar | ByteEscape) ~ "'" ~ Suffix? }
+
 StringContinue = { "\\\n" }
 StringLiteral = @{ "\"" ~ ((!("\"" | "\\" | IsolatedCr) ~ ANY) | QuoteEscape | AsciiEscape | UnicodeEscape | StringContinue)* ~ "\"" ~ Suffix? }
 
 RawStringContent = @{ ("\"" ~ (!IsolatedCr ~ ANY)* ~ "\"") | ("#" ~ RawStringContent ~ "#") }
 RawStringLiteral = @{ "r" ~ RawStringContent ~ Suffix? }
-
-AsciiForChar = @{ !("'" | "\\" | "\n" | "\r" | "\t") ~ ASCII }
-ByteEscape = @{ ("\\x" ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT) | "\\n" | "\\r" | "\\t" | "\\\\" | "\\0" | "\\'" | "\\\"" }
-ByteLiteral = @{ "b'" ~ (AsciiForChar | ByteEscape) ~ "'" ~ Suffix? }
 
 AsciiForString = @{ !("\"" | "\\" | IsolatedCr) ~ ASCII }
 ByteStringLiteral = @{ "b\"" ~ (AsciiForString | ByteEscape | StringContinue)* ~ "\"" ~ Suffix? }

@@ -4,5 +4,3 @@
 #
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
-cc 959ea02bf8459c2b0ec73842c317fa65002dd9d49c230eb0b3c80b6ff111f312 # shrinks to input = "0e0_০"
-cc 586ab124005525bd8d383f36f9d2eaaa52d14ae7f072ba301135e13f17febea4 # shrinks to input = "0_"
