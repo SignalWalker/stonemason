@@ -2,8 +2,8 @@
 #[grammar = "./stn.pest"]
 pub struct StnParser;
 
-const STRICT_KEYWORDS: [&str; 1] = ["mod"];
-const RESERVED_KEYWORDS: [&str; 1] = ["macro"];
+pub const STRICT_KEYWORDS: &[&str] = &["mod", "dyn"];
+pub const RESERVED_KEYWORDS: &[&str] = &["macro"];
 
 #[cfg(test)]
 mod tests {
@@ -69,7 +69,11 @@ mod tests {
         }
 
         #[test]
-        fn identifier(input in string_regex(&IDENTIFIER).unwrap()) {
+        fn identifier(input in string_regex(&IDENTIFIER).unwrap()
+            .prop_filter("non-keyword identifiers must not be strict or reserved keywords", |i| {
+                !STRICT_KEYWORDS.iter().any(|kw| i == kw) && !RESERVED_KEYWORDS.iter().any(|kw| i == kw)
+            })
+        ) {
             parses_to!(&input, Rule::Identifier, [Identifier(0, input.len(), [])]);
         }
 

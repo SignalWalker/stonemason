@@ -1,7 +1,8 @@
 KwMod = @{ "mod" }
+KwDyn = @{ "dyn" }
 KwMacro = @{ "macro" }
 
-StrictKeyword = @{ KwMod }
+StrictKeyword = @{ KwMod | KwDyn }
 ReservedKeyword = @{ KwMacro }
 
 IdentifierOrKeyword = @{ (XID_START ~ XID_CONTINUE*) | ("_" ~ XID_CONTINUE+) }
