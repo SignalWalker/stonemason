@@ -25,19 +25,6 @@ mod tests {
         };
     }
 
-    macro_rules! fails_with {
-        ($input:expr, $rules:tt :: $rule:tt, $positives:expr, $negatives:expr, $pos:expr) => {{
-            pest::fails_with!(
-                parser: StnParser,
-                input: $input,
-                rule: $rules::$rule,
-                positives: $positives,
-                negatives: $negatives,
-                pos: $pos
-            )
-        }};
-    }
-
     const IDENTIFIER_OR_KEYWORD: &str = r#"(\p{XID_Start}\p{XID_Continue}*)|(_\p{XID_Continue}+)"#;
     const SUFFIX: &str = r#"\p{XID_Start}\p{XID_Continue}*"#;
     const SUFFIX_NO_E: &str = r#"[\p{XID_Start}&&[^eE]]\p{XID_Continue}*"#;
