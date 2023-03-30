@@ -1,10 +1,8 @@
 use nom::{
-    bytes::complete::{tag, take, take_while, take_while1},
-    character::complete::{one_of, satisfy},
-    combinator::{eof, opt, peek, recognize, value, verify},
+    bytes::complete::{tag, take_while, take_while1},
+    character::complete::satisfy,
+    combinator::{eof, opt, peek, recognize, value},
     error::{ErrorKind, ParseError},
-    multi::many_till,
-    sequence::{preceded, tuple},
     AsChar, IResult, InputTakeAtPosition, Parser,
 };
 
@@ -202,13 +200,10 @@ pub fn float_literal(input: &str) -> IResult<&str, FloatLiteral> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use proptest::{strategy::Strategy, string::string_regex};
+    use proptest::string::string_regex;
 
     use crate::{
-        de::parse::{
-            float_literal, identifier::tests::IDENTIFIER_OR_KEYWORD, FloatExponent, FloatLiteral,
-            IntegerLiteral, IntegerType,
-        },
+        de::parse::{float_literal, FloatExponent, FloatLiteral, IntegerLiteral, IntegerType},
         test_parse, test_parse_complex,
     };
 
@@ -315,11 +310,4 @@ pub(crate) mod tests {
             suffix: None // TODO
         }
     );
-
-    // proptest::proptest! {
-    //     #[test]
-    //     fn int_literal() {
-    //         assert_eq!($crate::de::parse::$f(&$input), Ok(($exp_left, $exp_res)))
-    //     }
-    // }
 }

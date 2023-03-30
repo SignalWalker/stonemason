@@ -1,8 +1,7 @@
-use nom::bytes::complete::{self as bytes, tag};
+use nom::bytes::complete::tag;
 use nom::character::complete as nchar;
-use nom::combinator::{not, peek, success, verify};
+use nom::combinator::verify;
 use nom::{
-    branch::alt,
     bytes::complete::{take_while, take_while1},
     character::complete::satisfy,
     combinator::recognize,

@@ -4,10 +4,7 @@ use nom::combinator::value;
 use nom::sequence::terminated;
 use nom::Parser;
 use nom::{
-    branch::alt,
-    character::complete::none_of,
-    combinator::{eof, not, peek, recognize},
-    sequence::pair,
+    combinator::{not, peek},
     IResult,
 };
 
@@ -32,14 +29,8 @@ pub fn boolean(input: &str) -> IResult<&str, bool> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use proptest::{
-        strategy::{Filter, Strategy},
-        string::{string_regex, RegexGeneratorStrategy},
-    };
 
     use crate::{de::parse::identifier::tests::IDENTIFIER_OR_KEYWORD, test_parse};
-
-    use std::fmt::Debug;
 
     const SUFFIX: &str = IDENTIFIER_OR_KEYWORD;
 
