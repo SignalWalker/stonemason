@@ -21,7 +21,6 @@ IsolatedCr = @{ "\r" ~ (EOI | !"\n") }
 Suffix = @{ XID_START ~ XID_CONTINUE* }
 SuffixNoE = @{ !^"e" ~ Suffix }
 
-Unit = { "(" ~ ")" }
 Boolean = { KwTrue | KwFalse }
 
 //// numeric

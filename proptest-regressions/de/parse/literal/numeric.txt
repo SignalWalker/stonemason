@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f04af92f8db04a674ee86e912127794a4ab4619f2b678ca822cdcf77e79b554b # shrinks to input = "0b0"
+cc e9af1bbc47d726090b70066fe99044226c04b940a51f4c33e56b96e36075dc21 # shrinks to value = "0", suffix = "_A"
+cc dda4fad87f76d355013b17cf6d523de8d06049c7e7c4af266eef9cbb337e314e # shrinks to value = "0", suffix = "_\u{f39}"
+cc e988a0a39c1a6d0732cad7ea5414b4d9bf600b2fbb934b0d4edc5ab02735ac74 # shrinks to value = "0x0", suffix = "A"
+cc ca5f3df9c4ff8c8469873243c4b8952dade46cc04f02e0c225f6a47db5bdb24a # shrinks to value = "0", suffix = "_൦"
+cc f44544887bc96102c55a3b0138601505e8b62871b042e8c5ada338b67e454da8 # shrinks to value = "0xA", suffix = "a"
+cc 8a0b5d52cd6b00d8b22202862cb93dce4698568acde6d8f99407f411b3648829 # shrinks to int = "0", end = "0"
