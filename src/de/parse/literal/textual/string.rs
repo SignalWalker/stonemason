@@ -216,6 +216,52 @@ pub fn byte_string_literal(input: &str) -> IResult<&str, ByteStringLiteral> {
         .parse(input)
 }
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct RawByteStringLiteral<'data> {
+    hash_depth: usize,
+    inner: Vec<u8>,
+    suffix: Option<&'data str>,
+}
+
+impl<'data> Display for RawByteStringLiteral<'data> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut hash = String::new();
+        for _ in 0..self.hash_depth {
+            hash.push('#');
+        }
+        write!(f, "br{hash}\"")?;
+        for b in &self.inner {
+            write!(f, "{}", char::from(*b))?;
+        }
+        write!(f, "\"{hash}{}", self.suffix.unwrap_or(""))
+    }
+}
+
+pub fn raw_byte_string_literal(input: &str) -> IResult<&str, RawByteStringLiteral> {
+    fn raw_byte_string_content(input: &str) -> IResult<&str, (usize, Vec<u8>)> {
+        delimited(
+            nchar::char('"'),
+            many0(satisfy(|c| c as u32 <= 0x7F).map(|c| u8::try_from(c).unwrap())),
+            nchar::char('"'),
+        )
+        .map(|inner| (0, inner))
+        .or(delimited(
+            nchar::char('#'),
+            raw_byte_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
+            nchar::char('#'),
+        ))
+        .parse(input)
+    }
+    preceded(tag("br"), raw_byte_string_content)
+        .and(opt(suffix))
+        .map(|((hash_depth, inner), suffix)| RawByteStringLiteral {
+            hash_depth,
+            inner,
+            suffix,
+        })
+        .parse(input)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use proptest::string::string_regex;
