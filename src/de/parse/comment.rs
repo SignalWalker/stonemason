@@ -133,6 +133,10 @@ pub fn comment(input: &str) -> IResult<&str, Comment> {
         .parse(input)
 }
 
+// pub fn commented<'i, Error: ParseError<&'i str>>(p: ()) -> impl Parser<&'i str, (), Error> {
+//     todo!()
+// }
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::{de::parse::Comment, test_parse_complex};

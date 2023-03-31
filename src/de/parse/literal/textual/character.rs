@@ -21,8 +21,28 @@ use crate::de::parse::suffix;
 mod byte;
 pub use byte::*;
 
-pub fn quote_escape(input: &str) -> IResult<&str, char> {
-    preceded(nchar::char('\\'), nchar::char('\'').or(nchar::char('"')))(input)
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(Arbitrary))]
+pub enum QuoteEscape {
+    Single,
+    Double,
+}
+
+impl Display for QuoteEscape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single => write!(f, "\\'"),
+            Self::Double => write!(f, "\\\""),
+        }
+    }
+}
+
+pub fn quote_escape(input: &str) -> IResult<&str, QuoteEscape> {
+    preceded(
+        nchar::char('\\'),
+        value(QuoteEscape::Single, nchar::char('\''))
+            .or(value(QuoteEscape::Double, nchar::char('"'))),
+    )(input)
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -39,22 +59,20 @@ pub enum AsciiEscape {
 
 impl Display for AsciiEscape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "\\{}",
-            match self {
-                Self::Code(c) => format!(
-                    "x{}{}",
-                    char::from_digit((*c as u32 & 0x000000F0) >> 4, 16).unwrap(),
-                    char::from_digit(*c as u32 & 0x0000000F, 16).unwrap()
-                ),
-                Self::NewLine => 'n'.to_string(),
-                Self::Return => 'r'.to_string(),
-                Self::Tab => 't'.to_string(),
-                Self::Backslash => '\\'.to_string(),
-                Self::Null => '0'.to_string(),
-            }
-        )
+        write!(f, "\\")?;
+        match self {
+            Self::Code(c) => write!(
+                f,
+                "x{}{}",
+                char::from_digit((*c as u32 & 0x000000F0) >> 4, 16).unwrap(),
+                char::from_digit(*c as u32 & 0x0000000F, 16).unwrap()
+            ),
+            Self::NewLine => 'n'.fmt(f),
+            Self::Return => 'r'.fmt(f),
+            Self::Tab => 't'.fmt(f),
+            Self::Backslash => '\\'.fmt(f),
+            Self::Null => '0'.fmt(f),
+        }
     }
 }
 
@@ -95,7 +113,7 @@ pub struct UnicodeEscape(char);
 
 impl Display for UnicodeEscape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.escape_unicode())
+        self.0.escape_unicode().fmt(f)
     }
 }
 
@@ -135,25 +153,25 @@ pub enum CharLiteralInner {
         )
     )]
     Char(char),
-    QuoteEscapeSingle,
-    QuoteEscapeDouble,
+    QuoteEscape(QuoteEscape),
     AsciiEscape(AsciiEscape),
     UnicodeEscape(UnicodeEscape),
 }
 
 impl Display for CharLiteralInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            r#"{}"#,
-            match self {
-                Self::Char(c) => c.to_string(),
-                Self::QuoteEscapeSingle => r#"\'"#.to_string(),
-                Self::QuoteEscapeDouble => r#"\""#.to_string(),
-                Self::AsciiEscape(a) => a.to_string(),
-                Self::UnicodeEscape(u) => u.to_string(),
-            }
-        )
+        match self {
+            Self::Char(c) => c.fmt(f),
+            Self::QuoteEscape(q) => q.fmt(f),
+            Self::AsciiEscape(a) => a.fmt(f),
+            Self::UnicodeEscape(u) => u.fmt(f),
+        }
+    }
+}
+
+impl From<QuoteEscape> for CharLiteralInner {
+    fn from(value: QuoteEscape) -> Self {
+        Self::QuoteEscape(value)
     }
 }
 
@@ -186,11 +204,7 @@ pub fn char_literal(input: &str) -> IResult<&str, CharLiteral> {
         nchar::char('\''),
         none_of(&['\'', '\\', '\n', '\r', '\t'][..])
             .map(CharLiteralInner::Char)
-            .or(quote_escape.map(|c| match c {
-                '\'' => CharLiteralInner::QuoteEscapeSingle,
-                '\"' => CharLiteralInner::QuoteEscapeDouble,
-                _ => unreachable!(),
-            }))
+            .or(Parser::into(quote_escape))
             .or(Parser::into(ascii_escape))
             .or(Parser::into(unicode_escape)),
         nchar::char('\''),
@@ -206,7 +220,8 @@ pub(crate) mod tests {
 
     use crate::{
         de::parse::{
-            literal::tests::SUFFIX, AsciiEscape, CharLiteral, CharLiteralInner, UnicodeEscape,
+            literal::tests::SUFFIX, AsciiEscape, CharLiteral, CharLiteralInner, QuoteEscape,
+            UnicodeEscape,
         },
         test_parse_complex,
     };
@@ -214,8 +229,8 @@ pub(crate) mod tests {
     // const ASCII_ESCAPE_SPECIALS: &[char] = &['\n', '\r', '\t', '\\', '\0'];
 
     test_parse_complex!(quote_escape;
-        q in proptest::char::ranges(std::borrow::Cow::Borrowed(&['\''..='\'', '"'..='"']))
-        => &format!(r#"\{q}"#)
+        q in proptest::prelude::any::<QuoteEscape>()
+        => &q.to_string()
         => ""; q
     );
 

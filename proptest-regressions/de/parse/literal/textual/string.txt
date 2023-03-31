@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7c367d805c275d33f30baefc514d355af6654f4d29d5e57dcc129556aaf44b41 # shrinks to chars = [], suffix = ""
+cc c1a5ba1503b19af56f4374499a14887f48ee886674540955f18af12aa47a990c # shrinks to c = Char(Char('"'))
+cc 4b52d2dfbe283a1d97ff46f77c0731e06de9f5eb054575c41e47515dd7fd781b # shrinks to chars = [Char(Char('"'))], suffix = ""
