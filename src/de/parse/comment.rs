@@ -1,11 +1,7 @@
 use std::fmt::Display;
 
 use nom::{
-    branch::alt,
-    bytes::{
-        complete::take_while,
-        streaming::{is_not, tag},
-    },
+    bytes::{complete::take_while, streaming::tag},
     character::{
         complete::{anychar, satisfy},
         streaming::none_of,
@@ -13,11 +9,9 @@ use nom::{
     combinator::{not, opt, recognize, value},
     error::ParseError,
     multi::many0,
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, preceded},
     IResult, Parser,
 };
-
-use nom::character::complete as nchar;
 
 use super::isolated_cr;
 
