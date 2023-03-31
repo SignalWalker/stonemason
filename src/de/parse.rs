@@ -2,8 +2,8 @@ mod identifier;
 pub use identifier::*;
 mod literal;
 pub use literal::*;
-mod comment;
-pub use comment::*;
+mod author;
+pub use author::*;
 
 #[cfg(test)]
 mod tests {

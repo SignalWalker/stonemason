@@ -8,7 +8,7 @@ use nom::{
     },
     combinator::{not, opt, recognize, value},
     error::ParseError,
-    multi::many0,
+    multi::{many0, many1},
     sequence::{delimited, preceded},
     IResult, Parser,
 };
@@ -133,6 +133,28 @@ pub fn comment(input: &str) -> IResult<&str, Comment> {
         .parse(input)
 }
 
+pub fn pattern_white_space(input: &str) -> IResult<&str, char> {
+    satisfy(|c| {
+        let b = c as u32;
+        (0x9 <= b && b <= 0xD) // \t \n `vertical tab` `form feed` \r
+            || (c == '\u{20}') // `space`
+            || (c == '\u{85}') // `next line`
+            || (c == '\u{200E}') // `left-to-right mark`
+            || (c == '\u{200F}') // `right-to-left mark`
+            || (c == '\u{2028}') // `line separator`
+            || (c == '\u{2029}') // `paragraph separator`
+    })
+    .parse(input)
+}
+
+pub fn whitespace0(input: &str) -> IResult<&str, &str> {
+    recognize(many0(pattern_white_space))(input)
+}
+
+pub fn whitespace1(input: &str) -> IResult<&str, &str> {
+    recognize(many1(pattern_white_space))(input)
+}
+
 // pub fn commented<'i, Error: ParseError<&'i str>>(p: ()) -> impl Parser<&'i str, (), Error> {
 //     todo!()
 // }
@@ -140,6 +162,24 @@ pub fn comment(input: &str) -> IResult<&str, Comment> {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::{de::parse::Comment, test_parse_complex};
+
+    test_parse_complex!(pattern_white_space;
+        s in r#"\p{PATTERN_WHITE_SPACE}"#
+        => s.as_str()
+        => ""; s.chars().next().unwrap()
+    );
+
+    test_parse_complex!(whitespace0;
+        s in r#"\p{PATTERN_WHITE_SPACE}*"#
+        => s.as_str()
+        => ""; s.as_str()
+    );
+
+    test_parse_complex!(whitespace1;
+        s in r#"\p{PATTERN_WHITE_SPACE}+"#
+        => s.as_str()
+        => ""; s.as_str()
+    );
 
     test_parse_complex!(line_comment;
         text in r#"[^\n]*"#
