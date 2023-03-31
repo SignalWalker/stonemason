@@ -32,7 +32,7 @@ pub(crate) mod tests {
 
     use crate::{de::parse::identifier::tests::IDENTIFIER_OR_KEYWORD, test_parse};
 
-    const SUFFIX: &str = IDENTIFIER_OR_KEYWORD;
+    pub const SUFFIX: &str = IDENTIFIER_OR_KEYWORD;
 
     test_parse!(suffix, SUFFIX);
     test_parse!(isolated_cr, r#"\r[^\n]?"#; input => input.get(1..).unwrap_or(""); '\r');
