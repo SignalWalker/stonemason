@@ -18,11 +18,14 @@ use proptest::{strategy::Strategy, string::string_regex};
 
 use crate::de::parse::suffix;
 
+mod byte;
+pub use byte::*;
+
 pub fn quote_escape(input: &str) -> IResult<&str, char> {
     preceded(nchar::char('\\'), nchar::char('\'').or(nchar::char('"')))(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum AsciiEscape {
     #[cfg_attr(test, proptest(strategy = "(0u8..128u8).prop_map(AsciiEscape::Code)"))]
@@ -142,7 +145,7 @@ impl Display for CharLiteralInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            r#"'{}'"#,
+            r#"{}"#,
             match self {
                 Self::Char(c) => c.to_string(),
                 Self::QuoteEscapeSingle => r#"\'"#.to_string(),
@@ -174,7 +177,7 @@ pub struct CharLiteral<'suffix> {
 
 impl<'suffix> Display for CharLiteral<'suffix> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.inner, self.suffix.unwrap_or(""))
+        write!(f, "'{}'{}", self.inner, self.suffix.unwrap_or(""))
     }
 }
 
@@ -230,7 +233,7 @@ pub(crate) mod tests {
     test_parse_complex!(char_literal;
         inner in proptest::prelude::any::<CharLiteralInner>(),
         suffix in string_regex(&format!(r#"({SUFFIX})?"#)).unwrap()
-        => &format!(r#"{inner}{suffix}"#)
+        => &format!(r#"'{inner}'{suffix}"#)
         => ""; CharLiteral {
             inner,
             suffix: match suffix.as_str() {
