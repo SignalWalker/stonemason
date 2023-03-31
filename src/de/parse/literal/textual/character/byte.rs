@@ -39,24 +39,22 @@ pub enum ByteEscape {
 
 impl Display for ByteEscape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "\\{}",
-            match self {
-                ByteEscape::Code(c) => format!(
-                    "x{}{}",
-                    char::from_digit((*c as u32 & 0xF0) >> 4, 16).unwrap(),
-                    char::from_digit(*c as u32 & 0x0F, 16).unwrap()
-                ),
-                ByteEscape::NewLine => 'n'.to_string(),
-                ByteEscape::Return => 'r'.to_string(),
-                ByteEscape::Tab => 't'.to_string(),
-                ByteEscape::Backslash => '\\'.to_string(),
-                ByteEscape::Null => '0'.to_string(),
-                ByteEscape::QuoteSingle => '\''.to_string(),
-                ByteEscape::QuoteDouble => '"'.to_string(),
-            }
-        )
+        write!(f, "\\")?;
+        match self {
+            ByteEscape::Code(c) => write!(
+                f,
+                "x{}{}",
+                char::from_digit((*c as u32 & 0xF0) >> 4, 16).unwrap(),
+                char::from_digit(*c as u32 & 0x0F, 16).unwrap()
+            ),
+            ByteEscape::NewLine => 'n'.fmt(f),
+            ByteEscape::Return => 'r'.fmt(f),
+            ByteEscape::Tab => 't'.fmt(f),
+            ByteEscape::Backslash => '\\'.fmt(f),
+            ByteEscape::Null => '0'.fmt(f),
+            ByteEscape::QuoteSingle => '\''.fmt(f),
+            ByteEscape::QuoteDouble => '"'.fmt(f),
+        }
     }
 }
 
@@ -109,14 +107,10 @@ pub enum ByteLiteralInner {
 
 impl Display for ByteLiteralInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            r#"{}"#,
-            match self {
-                ByteLiteralInner::Ascii(b) => char::from(*b).to_string(),
-                ByteLiteralInner::Escape(e) => e.to_string(),
-            }
-        )
+        match self {
+            ByteLiteralInner::Ascii(b) => char::from(*b).fmt(f),
+            ByteLiteralInner::Escape(e) => e.fmt(f),
+        }
     }
 }
 
