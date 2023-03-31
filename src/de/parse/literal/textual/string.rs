@@ -3,9 +3,9 @@ use std::fmt::Display;
 use nom::{
     bytes::complete::tag,
     character::complete::{anychar, one_of},
-    combinator::{not, opt, value},
+    combinator::{not, opt, recognize, value},
     multi::many0,
-    sequence::delimited,
+    sequence::{delimited, preceded},
     IResult, Parser,
 };
 #[cfg(test)]
@@ -104,6 +104,53 @@ pub fn string_literal(input: &str) -> IResult<&str, StringLiteral> {
     .parse(input)
 }
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct RawStringLiteral<'data> {
+    hash_depth: usize,
+    inner: &'data str,
+    suffix: Option<&'data str>,
+}
+
+impl<'data> Display for RawStringLiteral<'data> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut hash = String::new();
+        for _ in 0..self.hash_depth {
+            hash.push('#');
+        }
+        write!(
+            f,
+            "r{hash}\"{}\"{hash}{}",
+            self.inner,
+            self.suffix.unwrap_or("")
+        )
+    }
+}
+
+pub fn raw_string_literal(input: &str) -> IResult<&str, RawStringLiteral> {
+    fn raw_string_content(input: &str) -> IResult<&str, (usize, &str)> {
+        delimited(
+            nchar::char('"'),
+            recognize(many0(not(isolated_cr).and(anychar))),
+            nchar::char('"'),
+        )
+        .map(|inner| (0, inner))
+        .or(delimited(
+            nchar::char('#'),
+            raw_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
+            nchar::char('#'),
+        ))
+        .parse(input)
+    }
+    preceded(nchar::char('r'), raw_string_content)
+        .and(opt(suffix))
+        .map(|((hash_depth, inner), suffix)| RawStringLiteral {
+            hash_depth,
+            inner,
+            suffix,
+        })
+        .parse(input)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use proptest::string::string_regex;
@@ -132,4 +179,10 @@ pub(crate) mod tests {
             }
         }
     );
+
+    // test_parse_complex!(raw_string_literal;
+    //     inner in r#"([^\r]|(\r\n))*"#,
+    //     => todo!()
+    //     => ""; todo!()
+    // );
 }
