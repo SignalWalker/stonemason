@@ -8,7 +8,10 @@ use nom::{
     sequence::pair,
     IResult, Parser,
 };
+use stonemason_proc::{Unparse, UnparseDisplay};
 use unicode_ident::{is_xid_continue, is_xid_start};
+
+use super::Unparse;
 
 lazy_static::lazy_static! {
     pub static ref STRICT_KEYWORDS: Box<[&'static str]> = {
@@ -30,8 +33,11 @@ pub fn identifier_or_keyword(input: &str) -> IResult<&str, &str> {
     )(input)
 }
 
-pub fn raw_identifier(input: &str) -> IResult<&str, (&str, &str)> {
-    tag("r#").and(identifier_or_keyword).parse(input)
+pub fn raw_identifier(input: &str) -> IResult<&str, &str> {
+    tag("r#")
+        .and(identifier_or_keyword)
+        .map(|(_, id)| id)
+        .parse(input)
 }
 
 pub fn non_keyword_identifier(input: &str) -> IResult<&str, &str> {
@@ -41,10 +47,17 @@ pub fn non_keyword_identifier(input: &str) -> IResult<&str, &str> {
     })(input)
 }
 
-pub fn identifier(input: &str) -> IResult<&str, (Option<&str>, &str)> {
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+pub enum Identifier<'data> {
+    #[unparse(prefix("r#"))]
+    Raw(&'data str),
+    Id(&'data str),
+}
+
+pub fn identifier(input: &str) -> IResult<&str, Identifier> {
     raw_identifier
-        .map(|(pre, id)| (Some(pre), id))
-        .or(non_keyword_identifier.map(|id| (None, id)))
+        .map(Identifier::Raw)
+        .or(non_keyword_identifier.map(Identifier::Id))
         .parse(input)
 }
 
@@ -53,7 +66,7 @@ pub(crate) mod tests {
     use proptest::{strategy::Strategy, string::string_regex};
 
     use crate::{
-        de::parse::{RESERVED_KEYWORDS, STRICT_KEYWORDS},
+        de::parse::{Identifier, RESERVED_KEYWORDS, STRICT_KEYWORDS},
         test_parse,
     };
 
@@ -66,7 +79,7 @@ pub(crate) mod tests {
     }
 
     test_parse!(identifier_or_keyword, IDENTIFIER_OR_KEYWORD);
-    test_parse!(raw_identifier, string_regex(&RAW_IDENTIFIER).unwrap(); input => ("r#", &input[2..]));
+    test_parse!(raw_identifier, string_regex(&RAW_IDENTIFIER).unwrap(); input => &input[2..]);
     test_parse!(
         non_keyword_identifier,
         string_regex(&NON_KEYWORD_IDENTIFIER).unwrap().prop_filter(
@@ -86,6 +99,6 @@ pub(crate) mod tests {
                     && RESERVED_KEYWORDS.binary_search(&i.as_str()).is_err()
             }
         );
-        input => {if input.starts_with("r#") { (Some("r#"), &input[2..]) } else { (None, input.as_str()) }}
+        input => {if input.starts_with("r#") { Identifier::Raw(&input[2..]) } else { Identifier::Id(input.as_str()) }}
     );
 }

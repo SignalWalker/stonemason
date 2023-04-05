@@ -1,0 +1,8 @@
+[package]
+name = "stonemason-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nom = "^7"
+stonemason-proc-private = {path = "../stonemason-proc-private"}

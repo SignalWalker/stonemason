@@ -12,30 +12,26 @@ use nom::{
     sequence::{delimited, preceded},
     IResult, Parser,
 };
+use stonemason_proc::{Unparse, UnparseDisplay};
 
-use super::isolated_cr;
+use crate::de::parse::Unparse;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+use super::{isolated_cr, Parsed};
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub enum Comment<'text> {
+    #[unparse(delim("//", _, '\n'))]
     Line(&'text str),
+    #[unparse(delim("//!", _, '\n'))]
     LineDocInner(&'text str),
+    #[unparse(delim("///", _, '\n'))]
     LineDocOuter(&'text str),
+    #[unparse(delim("/*", _, "*/"))]
     Block(&'text str),
+    #[unparse(delim("/*!", _, "*/"))]
     BlockDocInner(&'text str),
+    #[unparse(delim("/**", _, "*/"))]
     BlockDocOuter(&'text str),
-}
-
-impl<'text> Display for Comment<'text> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Comment::Line(t) => write!(f, "//{t}\n"),
-            Comment::LineDocInner(t) => write!(f, "//!{t}\n"),
-            Comment::LineDocOuter(t) => write!(f, "///{t}\n"),
-            Comment::Block(t) => write!(f, "/*{t}*/"),
-            Comment::BlockDocInner(t) => write!(f, "/*!{t}*/"),
-            Comment::BlockDocOuter(t) => write!(f, "/**{t}*/"),
-        }
-    }
 }
 
 fn not_char<'data, Error: ParseError<&'data str>>(c: char) -> impl Parser<&'data str, char, Error> {
@@ -147,21 +143,127 @@ pub fn pattern_white_space(input: &str) -> IResult<&str, char> {
     .parse(input)
 }
 
-pub fn whitespace0(input: &str) -> IResult<&str, &str> {
-    recognize(many0(pattern_white_space))(input)
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse)]
+pub struct Whitespace<'data, const REQ: bool>(pub &'data str);
+
+impl<'data, const REQ: bool> Parsed<&'data str> for Whitespace<'data, REQ> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        if REQ {
+            recognize(many1(pattern_white_space)).map(Self).parse(input)
+        } else {
+            recognize(many0(pattern_white_space)).map(Self).parse(input)
+        }
+    }
 }
 
-pub fn whitespace1(input: &str) -> IResult<&str, &str> {
-    recognize(many1(pattern_white_space))(input)
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+pub enum Authorial<'data> {
+    Space(Whitespace<'data, true>),
+    Comment(Comment<'data>),
+}
+
+impl<'data> From<Comment<'data>> for Authorial<'data> {
+    fn from(value: Comment<'data>) -> Self {
+        Self::Comment(value)
+    }
+}
+
+pub fn authorial(input: &str) -> IResult<&str, Authorial> {
+    Whitespace::from_parse
+        .map(|s| Authorial::Space(s))
+        .or(Parser::into(comment))
+        .parse(input)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+pub struct AuthorialMulti<'data, const REQ: bool = false>(pub Vec<Authorial<'data>>);
+
+// impl<'data, const REQ: bool> Unparse for AuthorialMulti<'data, REQ> {
+//     fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         self.0.unparse(f)
+//     }
+// }
+
+impl<'data> From<Vec<Authorial<'data>>> for AuthorialMulti<'data, false> {
+    #[inline]
+    fn from(value: Vec<Authorial<'data>>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'data, const REQ: bool> Parsed<&'data str> for AuthorialMulti<'data, REQ> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        if REQ {
+            many1(authorial).map(Self).parse(input)
+        } else {
+            many0(authorial).map(Self).parse(input)
+        }
+    }
 }
 
 // pub fn commented<'i, Error: ParseError<&'i str>>(p: ()) -> impl Parser<&'i str, (), Error> {
 //     todo!()
 // }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse)]
+pub struct AuthorialPre<'data, T, const REQ: bool = false>(AuthorialMulti<'data, REQ>, T);
+
+impl<'data, T: Display, const REQ: bool> Display for AuthorialPre<'data, T, REQ> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.0, self.1)
+    }
+}
+
+impl<'data, T: Parsed<&'data str>, const REQ: bool> Parsed<&'data str>
+    for AuthorialPre<'data, T, REQ>
+{
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        AuthorialMulti::<'data, REQ>::from_parse
+            .and(T::from_parse)
+            .map(|(c, t)| Self(c, t))
+            .parse(input)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+pub struct AuthorialSuf<'data, T, const REQ: bool = false>(T, AuthorialMulti<'data, REQ>);
+
+impl<'data, T: Parsed<&'data str>, const REQ: bool> Parsed<&'data str>
+    for AuthorialSuf<'data, T, REQ>
+{
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        T::from_parse
+            .and(AuthorialMulti::from_parse)
+            .map(|(c, t)| Self(c, t))
+            .parse(input)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+pub struct AuthorialDelim<'data, T, const REQ: bool = false>(
+    AuthorialMulti<'data, REQ>,
+    T,
+    AuthorialMulti<'data, REQ>,
+);
+
+impl<'data, T: Parsed<&'data str>, const REQ: bool> Parsed<&'data str>
+    for AuthorialDelim<'data, T, REQ>
+{
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        AuthorialMulti::from_parse
+            .and(T::from_parse)
+            .and(AuthorialMulti::from_parse)
+            .map(|((cp, t), cs)| Self(cp, t, cs))
+            .parse(input)
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::{de::parse::Comment, test_parse_complex};
+    use crate::{
+        de::parse::{Comment, Parsed, Whitespace},
+        test_parse_complex,
+    };
 
     test_parse_complex!(pattern_white_space;
         s in r#"\p{PATTERN_WHITE_SPACE}"#
@@ -169,16 +271,16 @@ pub(crate) mod tests {
         => ""; s.chars().next().unwrap()
     );
 
-    test_parse_complex!(whitespace0;
+    test_parse_complex!(whitespace0, Whitespace::<false>::from_parse;
         s in r#"\p{PATTERN_WHITE_SPACE}*"#
         => s.as_str()
-        => ""; s.as_str()
+        => ""; Whitespace::<false>(s.as_str())
     );
 
-    test_parse_complex!(whitespace1;
+    test_parse_complex!(whitespace1, Whitespace::<true>::from_parse;
         s in r#"\p{PATTERN_WHITE_SPACE}+"#
         => s.as_str()
-        => ""; s.as_str()
+        => ""; Whitespace::<true>(s.as_str())
     );
 
     test_parse_complex!(line_comment;

@@ -15,26 +15,20 @@ use proptest_derive::Arbitrary;
 
 #[cfg(test)]
 use proptest::{strategy::Strategy, string::string_regex};
+use stonemason_proc::{Unparse, UnparseDisplay};
 
-use crate::de::parse::suffix;
+use crate::de::parse::{suffix, Unparse};
 
 mod byte;
 pub use byte::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum QuoteEscape {
+    #[unparse("\\'")]
     Single,
+    #[unparse("\\\"")]
     Double,
-}
-
-impl Display for QuoteEscape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Single => write!(f, "\\'"),
-            Self::Double => write!(f, "\\\""),
-        }
-    }
 }
 
 pub fn quote_escape(input: &str) -> IResult<&str, QuoteEscape> {
@@ -45,35 +39,30 @@ pub fn quote_escape(input: &str) -> IResult<&str, QuoteEscape> {
     )(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub(crate) fn fmt_byte_to_ascii_escape(c: u8, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(
+        f,
+        "\\x{}{}",
+        char::from_digit((c as u32 & 0x000000F0) >> 4, 16).unwrap(),
+        char::from_digit(c as u32 & 0x0000000F, 16).unwrap()
+    )
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum AsciiEscape {
     #[cfg_attr(test, proptest(strategy = "(0u8..128u8).prop_map(AsciiEscape::Code)"))]
-    Code(u8),
+    Code(#[unparse({fmt_byte_to_ascii_escape(*__self_0, f)?;})] u8),
+    #[unparse("\\n")]
     NewLine,
+    #[unparse("\\r")]
     Return,
+    #[unparse("\\t")]
     Tab,
+    #[unparse("\\\\")]
     Backslash,
+    #[unparse("\\0")]
     Null,
-}
-
-impl Display for AsciiEscape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\\")?;
-        match self {
-            Self::Code(c) => write!(
-                f,
-                "x{}{}",
-                char::from_digit((*c as u32 & 0x000000F0) >> 4, 16).unwrap(),
-                char::from_digit(*c as u32 & 0x0000000F, 16).unwrap()
-            ),
-            Self::NewLine => 'n'.fmt(f),
-            Self::Return => 'r'.fmt(f),
-            Self::Tab => 't'.fmt(f),
-            Self::Backslash => '\\'.fmt(f),
-            Self::Null => '0'.fmt(f),
-        }
-    }
 }
 
 impl From<AsciiEscape> for char {
@@ -107,15 +96,9 @@ pub fn ascii_escape(input: &str) -> IResult<&str, AsciiEscape> {
     )(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
-pub struct UnicodeEscape(char);
-
-impl Display for UnicodeEscape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.escape_unicode().fmt(f)
-    }
-}
+pub struct UnicodeEscape(#[unparse({self.0.escape_unicode().fmt(f)?})] char);
 
 impl From<char> for UnicodeEscape {
     fn from(value: char) -> Self {
@@ -143,7 +126,7 @@ pub fn unicode_escape(input: &str) -> IResult<&str, UnicodeEscape> {
     .parse(input)
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum CharLiteralInner {
     #[cfg_attr(
@@ -156,17 +139,6 @@ pub enum CharLiteralInner {
     QuoteEscape(QuoteEscape),
     AsciiEscape(AsciiEscape),
     UnicodeEscape(UnicodeEscape),
-}
-
-impl Display for CharLiteralInner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Char(c) => c.fmt(f),
-            Self::QuoteEscape(q) => q.fmt(f),
-            Self::AsciiEscape(a) => a.fmt(f),
-            Self::UnicodeEscape(u) => u.fmt(f),
-        }
-    }
 }
 
 impl From<QuoteEscape> for CharLiteralInner {
@@ -187,16 +159,12 @@ impl From<UnicodeEscape> for CharLiteralInner {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Unparse, UnparseDisplay)]
 pub struct CharLiteral<'suffix> {
+    #[unparse(prefix('\''))]
     inner: CharLiteralInner,
+    #[unparse(self.suffix.unwrap_or(""))]
     suffix: Option<&'suffix str>,
-}
-
-impl<'suffix> Display for CharLiteral<'suffix> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "'{}'{}", self.inner, self.suffix.unwrap_or(""))
-    }
 }
 
 pub fn char_literal(input: &str) -> IResult<&str, CharLiteral> {

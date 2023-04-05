@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use nom::{
     character::complete::satisfy,
     combinator::{map_opt, map_res, opt, value},
@@ -14,8 +12,9 @@ use proptest_derive::Arbitrary;
 
 #[cfg(test)]
 use proptest::{strategy::Strategy, string::string_regex};
+use stonemason_proc::{Unparse, UnparseDisplay};
 
-use crate::de::parse::suffix;
+use crate::de::parse::{fmt_byte_to_ascii_escape, suffix, Unparse};
 
 pub fn ascii_for_char(input: &str) -> IResult<&str, u8> {
     map_res(
@@ -24,38 +23,24 @@ pub fn ascii_for_char(input: &str) -> IResult<&str, u8> {
     )(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum ByteEscape {
-    Code(u8),
+    Code(#[unparse({fmt_byte_to_ascii_escape(*__self_0, f)?;})] u8),
+    #[unparse("\\n")]
     NewLine,
+    #[unparse("\\r")]
     Return,
+    #[unparse("\\t")]
     Tab,
+    #[unparse("\\\\")]
     Backslash,
+    #[unparse("\\0")]
     Null,
+    #[unparse("\\'")]
     QuoteSingle,
+    #[unparse("\\\"")]
     QuoteDouble,
-}
-
-impl Display for ByteEscape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\\")?;
-        match self {
-            ByteEscape::Code(c) => write!(
-                f,
-                "x{}{}",
-                char::from_digit((*c as u32 & 0xF0) >> 4, 16).unwrap(),
-                char::from_digit(*c as u32 & 0x0F, 16).unwrap()
-            ),
-            ByteEscape::NewLine => 'n'.fmt(f),
-            ByteEscape::Return => 'r'.fmt(f),
-            ByteEscape::Tab => 't'.fmt(f),
-            ByteEscape::Backslash => '\\'.fmt(f),
-            ByteEscape::Null => '0'.fmt(f),
-            ByteEscape::QuoteSingle => '\''.fmt(f),
-            ByteEscape::QuoteDouble => '"'.fmt(f),
-        }
-    }
 }
 
 impl From<ByteEscape> for u8 {
@@ -92,7 +77,7 @@ pub fn byte_escape(input: &str) -> IResult<&str, ByteEscape> {
     )(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum ByteLiteralInner {
     #[cfg_attr(
@@ -101,17 +86,8 @@ pub enum ByteLiteralInner {
             strategy = r##"string_regex(r#"[[:ascii:]&&[^'\\\n\r\t]]"#).unwrap().prop_map(|c| ByteLiteralInner::Ascii(u8::try_from(c.chars().next().unwrap()).unwrap()))"##
         )
     )]
-    Ascii(u8),
+    Ascii(#[unparse((char::from(*__self_0)))] u8),
     Escape(ByteEscape),
-}
-
-impl Display for ByteLiteralInner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ByteLiteralInner::Ascii(b) => char::from(*b).fmt(f),
-            ByteLiteralInner::Escape(e) => e.fmt(f),
-        }
-    }
 }
 
 impl From<ByteEscape> for ByteLiteralInner {
@@ -120,9 +96,10 @@ impl From<ByteEscape> for ByteLiteralInner {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub struct ByteLiteral<'suffix> {
     inner: ByteLiteralInner,
+    #[unparse({self.suffix.unwrap_or("").unparse(f)?;})]
     suffix: Option<&'suffix str>,
 }
 

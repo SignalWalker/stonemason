@@ -13,8 +13,9 @@ use proptest_derive::Arbitrary;
 
 #[cfg(test)]
 use proptest::{strategy::Strategy, string::string_regex};
+use stonemason_proc::{Unparse, UnparseDisplay};
 
-use crate::de::parse::{isolated_cr, suffix};
+use crate::de::parse::{isolated_cr, suffix, Unparse};
 
 use super::{
     ascii_escape, byte_escape, quote_escape, unicode_escape, AsciiEscape, ByteEscape, QuoteEscape,
@@ -23,7 +24,7 @@ use super::{
 
 use nom::character::complete as nchar;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum StringLiteralInner {
     #[cfg_attr(
@@ -33,6 +34,7 @@ pub enum StringLiteralInner {
         )
     )]
     Char(char),
+    #[unparse("\\\n")]
     Continue,
     QuoteEscape(QuoteEscape),
     AsciiEscape(AsciiEscape),
@@ -57,18 +59,6 @@ impl From<UnicodeEscape> for StringLiteralInner {
     }
 }
 
-impl Display for StringLiteralInner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StringLiteralInner::Char(c) => c.fmt(f),
-            StringLiteralInner::Continue => write!(f, "\\\n"),
-            StringLiteralInner::QuoteEscape(q) => q.fmt(f),
-            StringLiteralInner::AsciiEscape(a) => a.fmt(f),
-            StringLiteralInner::UnicodeEscape(u) => u.fmt(f),
-        }
-    }
-}
-
 pub fn string_literal_inner(input: &str) -> IResult<&str, StringLiteralInner> {
     not(one_of(&['"', '\\'][..]).or(isolated_cr))
         .and(anychar)
@@ -80,20 +70,12 @@ pub fn string_literal_inner(input: &str) -> IResult<&str, StringLiteralInner> {
         .parse(input)
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Unparse, UnparseDisplay)]
 pub struct StringLiteral<'data> {
+    #[unparse(delim('"', '"'))]
     inner: Vec<StringLiteralInner>,
+    #[unparse(self.suffix.unwrap_or(""))]
     suffix: Option<&'data str>,
-}
-
-impl<'data> Display for StringLiteral<'data> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\"")?;
-        for i in &self.inner {
-            write!(f, "{i}")?;
-        }
-        write!(f, "\"{}", self.suffix.unwrap_or(""))
-    }
 }
 
 pub fn string_literal(input: &str) -> IResult<&str, StringLiteral> {
@@ -107,15 +89,15 @@ pub fn string_literal(input: &str) -> IResult<&str, StringLiteral> {
     .parse(input)
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, UnparseDisplay)]
 pub struct RawStringLiteral<'data> {
     hash_depth: usize,
     inner: &'data str,
     suffix: Option<&'data str>,
 }
 
-impl<'data> Display for RawStringLiteral<'data> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'data> Unparse for RawStringLiteral<'data> {
+    fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut hash = String::new();
         for _ in 0..self.hash_depth {
             hash.push('#');
@@ -154,7 +136,7 @@ pub fn raw_string_literal(input: &str) -> IResult<&str, RawStringLiteral> {
         .parse(input)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum ByteStringInner {
     #[cfg_attr(
@@ -163,24 +145,16 @@ pub enum ByteStringInner {
             strategy = r##"string_regex(r#"[[:ascii:]&&[^"\\\n\r\t]]"#).unwrap().prop_map(|c| ByteStringInner::Ascii(u8::try_from(c.chars().next().unwrap()).unwrap()))"##
         )
     )]
+    #[unparse((*__self_0 as char))]
     Ascii(u8),
     Escape(ByteEscape),
+    #[unparse("\\\n")]
     Continue,
 }
 
 impl From<ByteEscape> for ByteStringInner {
     fn from(value: ByteEscape) -> Self {
         Self::Escape(value)
-    }
-}
-
-impl Display for ByteStringInner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ByteStringInner::Ascii(c) => (*c as char).fmt(f),
-            ByteStringInner::Escape(e) => e.fmt(f),
-            ByteStringInner::Continue => write!(f, "\\\n"),
-        }
     }
 }
 
