@@ -1,3 +1,5 @@
+use nom::{IResult, Parser};
+
 mod identifier;
 pub use identifier::*;
 mod literal;
@@ -6,7 +8,6 @@ mod author;
 pub use author::*;
 
 mod stone;
-use nom::IResult;
 pub use stone::*;
 
 mod path;
@@ -24,13 +25,49 @@ pub use type_::*;
 mod macro_;
 pub use macro_::*;
 
-pub trait Parsed<I>
+mod meta;
+pub use meta::*;
+
+mod expr;
+pub use expr::*;
+
+/// Types that can be parsed from an input `Input`.
+pub trait Parsed<Input>
 where
     Self: Sized,
 {
-    fn from_parse(input: I) -> IResult<I, Self>;
+    /// Parse `input` into an instance of `Self`.
+    #[cfg(not(feature = "nightly"))]
+    fn from_parse(input: Input) -> IResult<Input, Self>;
+    // i don't remember why this needed to be nightly-only
+    #[cfg(feature = "nightly")]
+    type Error = nom::error::Error<Input>;
+    #[cfg(feature = "nightly")]
+    fn from_parse(input: Input) -> IResult<Input, Self, Self::Error>;
 }
 
+/// Parse `Input` to `Output`, collapsing errors to `None`.
+impl<I: Clone, T: Parsed<I>> Parsed<I> for Option<T> {
+    fn from_parse(input: I) -> IResult<I, Self> {
+        nom::combinator::opt(T::from_parse).parse(input)
+    }
+}
+
+/// Parse `Input` to `Output`, boxing the result.
+impl<I: Clone, T: Parsed<I>> Parsed<I> for Box<T> {
+    fn from_parse(input: I) -> IResult<I, Self> {
+        T::from_parse.map(Box::new).parse(input)
+    }
+}
+
+/// Parse `Input` to `Output`, discarding the result.
+impl<Input: Clone, Output: Parsed<Input>> Parsed<Input> for std::marker::PhantomData<Output> {
+    fn from_parse(input: Input) -> nom::IResult<Input, Self> {
+        nom::combinator::value(Self, Output::from_parse).parse(input)
+    }
+}
+
+/// Like [std::fmt::Display], but specifically returns the unmodified parsed input of a [Parsed] type.
 pub trait Unparse {
     fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
 }
@@ -54,13 +91,14 @@ impl<T: Unparse + ?Sized> ToUnparsed for T {
 }
 
 stonemason_proc_private::impl_unparse_for_tuple!();
+stonemason_proc_private::impl_parsed_for_tuple!();
 
 macro_rules! impl_unparse_for_display {
     ($($t:ty),+) => {
         $(
             impl Unparse for $t {
-                fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    <$t as std::fmt::Display>::fmt(self, f)
+                fn unparse(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    <$t as ::std::fmt::Display>::fmt(self, f)
                 }
             }
         )+
@@ -71,7 +109,7 @@ macro_rules! impl_unparse_for_iter {
     ($t:ident; $($i:ty),+) => {
         $(
             impl<$t: Unparse> Unparse for $i {
-                fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fn unparse(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                     for t in self {
                         t.unparse(f)?;
                     }
@@ -89,6 +127,15 @@ impl_unparse_for_display!(str, String, char);
 impl<T: Unparse> Unparse for Box<T> {
     fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         (**self).unparse(f)
+    }
+}
+
+impl<T: Unparse> Unparse for Option<T> {
+    fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(s) = self {
+            s.unparse(f)?;
+        }
+        Ok(())
     }
 }
 

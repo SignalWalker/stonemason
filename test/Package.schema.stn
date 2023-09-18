@@ -1,0 +1,42 @@
+pub struct Stone {
+	package: Package,
+	dependencies: &'static [&'static str: Dependency] ?? &[:],
+	dev_dependencies: &'static [&'static str: Dependency] ?? &[:],
+	build: Option<impl FnOnce()> ?? None,
+	features: &'static [&'static str: &'static [&'static str]] ?? &[:]
+}
+
+pub struct Package {
+	name: &'static str,
+	version: &'static str,
+	edition: u32 ?? 2023
+}
+
+pub struct SemVer {
+	major: u32,
+	minor: u32,
+	patch: u32,
+	pre_release: Vec<String>,
+	build: Vec<String>
+}
+
+impl TryFrom<&str> for SemVer {
+	type Error = ();
+	fn(peg) try_from(input: &str) -> Result<Self, Self::Error> {
+		let numeric = |:_:| -> u32 { ('0' => 0) | ((['1'..='9']@first ~ ['0'..='9']*@latter) => { todo!() }) };
+		let core = |:_:| -> (u32, u32, u32) { numeric@major ~ '.' ~ numeric@minor ~ '.' ~ numeric@patch => (major, minor, patch) }
+		let semver = |:_:| -> Self { core ~ ('-' ~ pre_release)? ~ ('+' ~ build)? };
+		semver(input)
+	}
+}
+
+pub struct Dependency {
+	version: Option<&'static str> ?? None,
+	path: Option<&'static str> ?? None,
+}
+
+impl From<&'static str> for Dependency {
+	fn from(version: &'static str) -> Self {
+		Self { version: Some(version) }
+	}
+}

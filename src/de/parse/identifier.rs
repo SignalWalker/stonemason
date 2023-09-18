@@ -11,7 +11,7 @@ use nom::{
 use stonemason_proc::{Unparse, UnparseDisplay};
 use unicode_ident::{is_xid_continue, is_xid_start};
 
-use super::Unparse;
+use super::{Parsed, Unparse};
 
 lazy_static::lazy_static! {
     pub static ref STRICT_KEYWORDS: Box<[&'static str]> = {
@@ -33,11 +33,27 @@ pub fn identifier_or_keyword(input: &str) -> IResult<&str, &str> {
     )(input)
 }
 
-pub fn raw_identifier(input: &str) -> IResult<&str, &str> {
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
+#[unparse(prefix("r#"))]
+pub struct RawIdentifier<'data>(&'data str);
+
+impl<'data> RawIdentifier<'data> {
+    fn new(id: &'data str) -> Self {
+        Self(id)
+    }
+}
+
+pub fn raw_identifier(input: &str) -> IResult<&str, RawIdentifier> {
     tag("r#")
         .and(identifier_or_keyword)
-        .map(|(_, id)| id)
+        .map(|(_, id)| RawIdentifier(id))
         .parse(input)
+}
+
+impl<'data> Parsed<&'data str> for RawIdentifier<'data> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        raw_identifier(input)
+    }
 }
 
 pub fn non_keyword_identifier(input: &str) -> IResult<&str, &str> {
@@ -49,8 +65,7 @@ pub fn non_keyword_identifier(input: &str) -> IResult<&str, &str> {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub enum Identifier<'data> {
-    #[unparse(prefix("r#"))]
-    Raw(&'data str),
+    Raw(RawIdentifier<'data>),
     Id(&'data str),
 }
 
@@ -61,12 +76,18 @@ pub fn identifier(input: &str) -> IResult<&str, Identifier> {
         .parse(input)
 }
 
+impl<'data> Parsed<&'data str> for Identifier<'data> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        identifier(input)
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use proptest::{strategy::Strategy, string::string_regex};
 
     use crate::{
-        de::parse::{Identifier, RESERVED_KEYWORDS, STRICT_KEYWORDS},
+        de::parse::{Identifier, RawIdentifier, RESERVED_KEYWORDS, STRICT_KEYWORDS},
         test_parse,
     };
 
@@ -79,7 +100,7 @@ pub(crate) mod tests {
     }
 
     test_parse!(identifier_or_keyword, IDENTIFIER_OR_KEYWORD);
-    test_parse!(raw_identifier, string_regex(&RAW_IDENTIFIER).unwrap(); input => &input[2..]);
+    test_parse!(raw_identifier, string_regex(&RAW_IDENTIFIER).unwrap(); input => RawIdentifier::new(&input[2..]));
     test_parse!(
         non_keyword_identifier,
         string_regex(&NON_KEYWORD_IDENTIFIER).unwrap().prop_filter(
@@ -99,6 +120,6 @@ pub(crate) mod tests {
                     && RESERVED_KEYWORDS.binary_search(&i.as_str()).is_err()
             }
         );
-        input => {if input.starts_with("r#") { Identifier::Raw(&input[2..]) } else { Identifier::Id(input.as_str()) }}
+        input => {if input.starts_with("r#") { Identifier::Raw(RawIdentifier::new(&input[2..])) } else { Identifier::Id(input.as_str()) }}
     );
 }

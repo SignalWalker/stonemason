@@ -1,0 +1,29 @@
+fn(total) build() {
+
+}
+
+Stone {
+    package: { // struct brace constructor syntax
+        name: "stonemason",
+        version: "0.1.0".try_into()?,
+        edition: 2023,
+    },
+    dependencies: &[ // record constructor syntax
+        "nom": "^7".into(),
+        "unicode-ident": "^1".into(),
+        "lazy_static": "^1".into(),
+        "stonemason-common": { path: "lib/stonemason-common", .. },
+        "stonemason-proc": { path: "lib/stonemason-proc", .. },
+        "stonemason-proc-private": { path: "lib/stonemason-proc-private", .. }
+    ],
+    dev_dependencies: &[
+        "proptest": "^1",
+        "proptest-derive": "^0.3"
+    ],
+    build: Some(build),
+    features = &[
+        "default": &[],
+        "nightly": &[]
+    ],
+    ..
+}

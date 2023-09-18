@@ -18,6 +18,7 @@ pub const UTF8BOM: char = '\u{FEFF}';
 pub struct Shebang<'data>(&'data str);
 
 impl<'data> Display for Shebang<'data> {
+    #[allow(clippy::write_with_newline)] // i feel like the intent is clearer with the explicit newline
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "#!{}\n", self.0)
     }

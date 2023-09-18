@@ -16,7 +16,7 @@ use stonemason_proc::{Unparse, UnparseDisplay};
 
 use crate::de::parse::Unparse;
 
-use super::{isolated_cr, Parsed};
+use super::{isolated_cr, Parsed, Surrounded};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub enum Comment<'text> {
@@ -156,6 +156,7 @@ impl<'data, const REQ: bool> Parsed<&'data str> for Whitespace<'data, REQ> {
     }
 }
 
+/// Whitespace | Comment
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub enum Authorial<'data> {
     Space(Whitespace<'data, true>),
@@ -175,8 +176,14 @@ pub fn authorial(input: &str) -> IResult<&str, Authorial> {
         .parse(input)
 }
 
+/// A sequence of (Whitespace | Comment).
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub struct AuthorialMulti<'data, const REQ: bool = false>(pub Vec<Authorial<'data>>);
+
+/// Authorial*
+pub type Authorial0<'data> = AuthorialMulti<'data, false>;
+/// Authorial+
+pub type Authorial1<'data> = AuthorialMulti<'data, true>;
 
 // impl<'data, const REQ: bool> Unparse for AuthorialMulti<'data, REQ> {
 //     fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -239,24 +246,8 @@ impl<'data, T: Parsed<&'data str>, const REQ: bool> Parsed<&'data str>
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Unparse, UnparseDisplay)]
-pub struct AuthorialDelim<'data, T, const REQ: bool = false>(
-    AuthorialMulti<'data, REQ>,
-    T,
-    AuthorialMulti<'data, REQ>,
-);
-
-impl<'data, T: Parsed<&'data str>, const REQ: bool> Parsed<&'data str>
-    for AuthorialDelim<'data, T, REQ>
-{
-    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
-        AuthorialMulti::from_parse
-            .and(T::from_parse)
-            .and(AuthorialMulti::from_parse)
-            .map(|((cp, t), cs)| Self(cp, t, cs))
-            .parse(input)
-    }
-}
+pub type AuthorialDelim<'data, D, const REQ: bool = false> =
+    Surrounded<AuthorialMulti<'data, REQ>, D>;
 
 #[cfg(test)]
 pub(crate) mod tests {

@@ -11,7 +11,7 @@ use stonemason_proc::{Unparse, UnparseDisplay};
 // #[cfg(test)]
 // use proptest_derive::Arbitrary;
 
-use super::{identifier, Identifier, Unparse};
+use super::{identifier, Identifier, Parsed, Unparse};
 
 mod type_;
 pub use type_::*;
@@ -35,7 +35,13 @@ impl<'data> From<Identifier<'data>> for SimplePathSegment<'data> {
     }
 }
 
-pub fn simple_path_segment(input: &str) -> IResult<&str, SimplePathSegment> {
+impl<'data> Parsed<&'data str> for SimplePathSegment<'data> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        simple_path_segment(input)
+    }
+}
+
+fn simple_path_segment(input: &str) -> IResult<&str, SimplePathSegment> {
     value(SimplePathSegment::Super, tag("super"))
         .or(value(SimplePathSegment::Self_, tag("self")))
         .or(value(SimplePathSegment::Stone, tag("stone")))
@@ -65,7 +71,13 @@ impl<'data> Unparse for SimplePath<'data> {
     }
 }
 
-pub fn simple_path(input: &str) -> IResult<&str, SimplePath> {
+impl<'data> Parsed<&'data str> for SimplePath<'data> {
+    fn from_parse(input: &'data str) -> IResult<&'data str, Self> {
+        simple_path(input)
+    }
+}
+
+fn simple_path(input: &str) -> IResult<&str, SimplePath> {
     opt(tag("::"))
         .and(simple_path_segment)
         .and(many0(tag("::").and(simple_path_segment).map(|(_, s)| s)))

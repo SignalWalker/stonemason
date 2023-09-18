@@ -15,7 +15,7 @@ stonemason-proc-private = { path = "lib/stonemason-proc-private" }
 
 [dev-dependencies]
 proptest = "^1"
-proptest-derive = "^0.3"
+proptest-derive = "^0.4"
 
 [features]
 default = []

@@ -4,19 +4,26 @@ use syn::{parse_macro_input, parse_quote, DeriveInput, GenericParam, Generics, T
 mod unparse;
 use unparse::*;
 
-#[proc_macro_derive(Parsed, attributes(parsed_input))]
+mod parse;
+use parse::*;
+
+#[proc_macro_derive(Parsed, attributes(parsed))]
 pub fn derive_parsed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
 
-    add_trait_bounds(&parse_quote!(Parsed), &mut input.generics);
+    add_trait_bounds(&parse_quote!(Parsed<Input>), &mut input.generics);
     let ident = &input.ident;
     let (impl_generics, ty_generics, where_clauses) = input.generics.split_for_impl();
 
+    let parse = gen_parser(&input)
+        .map_err(syn::Error::into_compile_error)
+        .unwrap();
+
     let expanded = quote!(
         #[automatically_derived]
-        impl #impl_generics Parsed<&str> for #ident #ty_generics #where_clauses {
-            fn from_parse(input: &str) -> IResult<&str, #ident #ty_generics> {
-                todo!()
+        impl #impl_generics Parsed<Input> for #ident #ty_generics #where_clauses {
+            fn from_parse(input: Input) -> nom::IResult<Input, #ident #ty_generics> {
+                #parse
             }
         }
     );
