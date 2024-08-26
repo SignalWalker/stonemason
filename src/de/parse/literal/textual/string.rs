@@ -1,5 +1,9 @@
-use std::fmt::Display;
-
+use super::{
+    ascii_escape, byte_escape, quote_escape, unicode_escape, AsciiEscape, ByteEscape, QuoteEscape,
+    UnicodeEscape,
+};
+use crate::de::parse::{suffix, IsolatedCr, ParseError, Parsed, Unparse};
+use nom::character::complete as nchar;
 use nom::{
     bytes::complete::tag,
     character::complete::{anychar, one_of, satisfy},
@@ -9,20 +13,10 @@ use nom::{
     IResult, Parser,
 };
 #[cfg(test)]
-use proptest_derive::Arbitrary;
-
-#[cfg(test)]
 use proptest::{strategy::Strategy, string::string_regex};
+#[cfg(test)]
+use proptest_derive::Arbitrary;
 use stonemason_proc::{Unparse, UnparseDisplay};
-
-use crate::de::parse::{isolated_cr, suffix, Unparse};
-
-use super::{
-    ascii_escape, byte_escape, quote_escape, unicode_escape, AsciiEscape, ByteEscape, QuoteEscape,
-    UnicodeEscape,
-};
-
-use nom::character::complete as nchar;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Unparse, UnparseDisplay)]
 #[cfg_attr(test, derive(Arbitrary))]
@@ -59,8 +53,10 @@ impl From<UnicodeEscape> for StringLiteralInner {
     }
 }
 
-pub fn string_literal_inner(input: &str) -> IResult<&str, StringLiteralInner> {
-    not(one_of(&['"', '\\'][..]).or(isolated_cr))
+pub fn string_literal_inner<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, StringLiteralInner, Error> {
+    not(one_of(&['"', '\\'][..]).or(Parser::into(IsolatedCr::from_parse)))
         .and(anychar)
         .map(|(_, c)| StringLiteralInner::Char(c))
         .or(Parser::into(quote_escape))
@@ -78,15 +74,25 @@ pub struct StringLiteral<'data> {
     suffix: Option<&'data str>,
 }
 
-pub fn string_literal(input: &str) -> IResult<&str, StringLiteral> {
-    delimited(
-        nchar::char('"'),
-        many0(string_literal_inner),
-        nchar::char('"'),
-    )
-    .and(opt(suffix))
-    .map(|(inner, suffix)| StringLiteral { inner, suffix })
-    .parse(input)
+impl<'data> Parsed<&'data str> for StringLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        delimited(
+            nchar::char('"'),
+            many0(string_literal_inner),
+            nchar::char('"'),
+        )
+        .and(opt(suffix))
+        .map(|(inner, suffix)| Self { inner, suffix })
+        .parse(input)
+    }
+}
+
+pub fn string_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, StringLiteral, Error> {
+    StringLiteral::from_parse(input)
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, UnparseDisplay)]
@@ -111,29 +117,41 @@ impl<'data> Unparse for RawStringLiteral<'data> {
     }
 }
 
-pub fn raw_string_literal(input: &str) -> IResult<&str, RawStringLiteral> {
-    fn raw_string_content(input: &str) -> IResult<&str, (usize, &str)> {
-        delimited(
-            nchar::char('"'),
-            recognize(many0(not(isolated_cr).and(anychar))),
-            nchar::char('"'),
-        )
-        .map(|inner| (0, inner))
-        .or(delimited(
-            nchar::char('#'),
-            raw_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
-            nchar::char('#'),
-        ))
-        .parse(input)
+impl<'data> Parsed<&'data str> for RawStringLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        fn raw_string_content<'data, Error: ParseError<&'data str>>(
+            input: &'data str,
+        ) -> IResult<&'data str, (usize, &'data str), Error> {
+            delimited(
+                nchar::char('"'),
+                recognize(many0(not(IsolatedCr::from_parse).and(anychar))),
+                nchar::char('"'),
+            )
+            .map(|inner| (0, inner))
+            .or(delimited(
+                nchar::char('#'),
+                raw_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
+                nchar::char('#'),
+            ))
+            .parse(input)
+        }
+        preceded(nchar::char('r'), raw_string_content)
+            .and(opt(suffix))
+            .map(|((hash_depth, inner), suffix)| RawStringLiteral {
+                hash_depth,
+                inner,
+                suffix,
+            })
+            .parse(input)
     }
-    preceded(nchar::char('r'), raw_string_content)
-        .and(opt(suffix))
-        .map(|((hash_depth, inner), suffix)| RawStringLiteral {
-            hash_depth,
-            inner,
-            suffix,
-        })
-        .parse(input)
+}
+
+pub fn raw_string_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, RawStringLiteral, Error> {
+    RawStringLiteral::from_parse(input)
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Unparse, UnparseDisplay)]
@@ -158,8 +176,10 @@ impl From<ByteEscape> for ByteStringInner {
     }
 }
 
-pub fn byte_string_inner(input: &str) -> IResult<&str, ByteStringInner> {
-    not(one_of(&['"', '\\'][..]).or(isolated_cr))
+pub fn byte_string_inner<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, ByteStringInner, Error> {
+    not(one_of(&['"', '\\'][..]).or(Parser::into(IsolatedCr::from_parse)))
         .and(satisfy(|c| (c as u32) <= 0x7F))
         .map(|(_, c)| ByteStringInner::Ascii(u8::try_from(c).unwrap()))
         .or(Parser::into(byte_escape))
@@ -167,14 +187,14 @@ pub fn byte_string_inner(input: &str) -> IResult<&str, ByteStringInner> {
         .parse(input)
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, UnparseDisplay)]
 pub struct ByteStringLiteral<'data> {
     inner: Vec<ByteStringInner>,
     suffix: Option<&'data str>,
 }
 
-impl<'data> Display for ByteStringLiteral<'data> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'data> Unparse for ByteStringLiteral<'data> {
+    fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "b\"")?;
         for i in &self.inner {
             write!(f, "{i}")?;
@@ -183,22 +203,32 @@ impl<'data> Display for ByteStringLiteral<'data> {
     }
 }
 
-pub fn byte_string_literal(input: &str) -> IResult<&str, ByteStringLiteral> {
-    delimited(tag("b\""), many0(byte_string_inner), nchar::char('"'))
-        .and(opt(suffix))
-        .map(|(inner, suffix)| ByteStringLiteral { inner, suffix })
-        .parse(input)
+impl<'data> Parsed<&'data str> for ByteStringLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        delimited(tag("b\""), many0(byte_string_inner), nchar::char('"'))
+            .and(opt(suffix))
+            .map(|(inner, suffix)| ByteStringLiteral { inner, suffix })
+            .parse(input)
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+pub fn byte_string_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, ByteStringLiteral, Error> {
+    ByteStringLiteral::from_parse(input)
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, UnparseDisplay)]
 pub struct RawByteStringLiteral<'data> {
     hash_depth: usize,
     inner: Vec<u8>,
     suffix: Option<&'data str>,
 }
 
-impl<'data> Display for RawByteStringLiteral<'data> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'data> Unparse for RawByteStringLiteral<'data> {
+    fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut hash = String::new();
         for _ in 0..self.hash_depth {
             hash.push('#');
@@ -211,29 +241,41 @@ impl<'data> Display for RawByteStringLiteral<'data> {
     }
 }
 
-pub fn raw_byte_string_literal(input: &str) -> IResult<&str, RawByteStringLiteral> {
-    fn raw_byte_string_content(input: &str) -> IResult<&str, (usize, Vec<u8>)> {
-        delimited(
-            nchar::char('"'),
-            many0(satisfy(|c| c as u32 <= 0x7F).map(|c| u8::try_from(c).unwrap())),
-            nchar::char('"'),
-        )
-        .map(|inner| (0, inner))
-        .or(delimited(
-            nchar::char('#'),
-            raw_byte_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
-            nchar::char('#'),
-        ))
-        .parse(input)
+impl<'data> Parsed<&'data str> for RawByteStringLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        fn raw_byte_string_content<'data, Error: ParseError<&'data str>>(
+            input: &'data str,
+        ) -> IResult<&'data str, (usize, Vec<u8>), Error> {
+            delimited(
+                nchar::char('"'),
+                many0(satisfy(|c| c as u32 <= 0x7F).map(|c| u8::try_from(c).unwrap())),
+                nchar::char('"'),
+            )
+            .map(|inner| (0, inner))
+            .or(delimited(
+                nchar::char('#'),
+                raw_byte_string_content.map(|(hash_depth, inner)| (hash_depth + 1, inner)),
+                nchar::char('#'),
+            ))
+            .parse(input)
+        }
+        preceded(tag("br"), raw_byte_string_content)
+            .and(opt(suffix))
+            .map(|((hash_depth, inner), suffix)| RawByteStringLiteral {
+                hash_depth,
+                inner,
+                suffix,
+            })
+            .parse(input)
     }
-    preceded(tag("br"), raw_byte_string_content)
-        .and(opt(suffix))
-        .map(|((hash_depth, inner), suffix)| RawByteStringLiteral {
-            hash_depth,
-            inner,
-            suffix,
-        })
-        .parse(input)
+}
+
+pub fn raw_byte_string_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, RawByteStringLiteral, Error> {
+    RawByteStringLiteral::from_parse(input)
 }
 
 #[cfg(test)]

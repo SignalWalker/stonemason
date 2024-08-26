@@ -53,21 +53,32 @@
             ];
           };
         in {
-          default = self.packages.${system}.${name};
-          "${name}-artifacts" = crane.buildDepsOnly commonArgs;
-          ${name} = crane.buildPackage (commonArgs
-            // {
-              cargoArtifacts = self.packages.${system}."${name}-artifacts";
-            });
+          # default = self.packages.${system}.${name};
+          # "${name}-artifacts" = crane.buildDepsOnly commonArgs;
+          # ${name} = crane.buildPackage (commonArgs
+          #   // {
+          #     cargoArtifacts = self.packages.${system}."${name}-artifacts";
+          #   });
         })
         nixpkgsFor;
       devShells =
         std.mapAttrs (system: selfPkgs: let
           pkgs = nixpkgsFor.${system};
         in {
-          ${name} = pkgs.mkShell {
-            inputsFrom = [selfPkgs.${name}];
-          };
+          default = self.devShells.${system}.${name};
+          ${name} = let
+            llvm = pkgs.llvmPackages_16;
+          in
+            pkgs.mkShell {
+              packages = with pkgs; [
+                llvm.clang
+                mold
+              ];
+              inputsFrom = [];
+              nativeBuildInputs = with pkgs; [
+                llvm.llvm
+              ];
+            };
         })
         self.packages;
     };

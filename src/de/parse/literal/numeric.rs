@@ -2,28 +2,52 @@ use nom::{
     bytes::complete::{tag, take_while, take_while1},
     character::complete::satisfy,
     combinator::{eof, opt, peek, recognize, value},
-    error::{ErrorKind, ParseError},
+    error::ErrorKind,
     AsChar, IResult, InputTakeAtPosition, Parser,
 };
 
+use crate::de::parse::{ParseError, Parsed, Unparse};
 use nom::character::complete as nchar;
+use stonemason_proc::{Unparse, UnparseDisplay};
 use unicode_ident::{is_xid_continue, is_xid_start};
 
 use super::suffix;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Unparse)]
 pub enum IntegerType {
+    #[unparse("0b")]
     Bin,
+    #[unparse("0o")]
     Oct,
+    #[unparse("")]
     Dec,
+    #[unparse("0x")]
     Hex,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Unparse, UnparseDisplay)]
 pub struct IntegerLiteral<'data> {
     ty: IntegerType,
     src: &'data str,
+    #[unparse({self.suffix.unwrap_or("")})]
     suffix: Option<&'data str>,
+}
+
+impl<'data> Parsed<&'data str> for IntegerLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        hex_literal
+            .or(oct_literal)
+            .or(bin_literal)
+            .or(dec_literal)
+            .and(opt(numeric_suffix))
+            .map(|(mut lit, suf)| {
+                lit.suffix = suf;
+                lit
+            })
+            .parse(input)
+    }
 }
 
 #[inline]
@@ -66,7 +90,9 @@ where
     input.split_at_position1_complete(|item| !is_bin_digit(item), ErrorKind::Digit)
 }
 
-pub fn numeric_suffix(input: &str) -> IResult<&str, &str> {
+pub fn numeric_suffix<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, &'data str, Error> {
     recognize(
         satisfy(|c| c != 'e' && c != 'E' && is_xid_start(c))
             .and(take_while(is_xid_continue))
@@ -104,18 +130,26 @@ pub fn prefixed_numeric<'i, Error: ParseError<&'i str>>(
         })
 }
 
-pub fn bin_literal(input: &str) -> IResult<&str, IntegerLiteral> {
+pub fn bin_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, IntegerLiteral, Error> {
     prefixed_numeric("0b", IntegerType::Bin, is_bin_digit).parse(input)
 }
 
-pub fn oct_literal(input: &str) -> IResult<&str, IntegerLiteral> {
+pub fn oct_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, IntegerLiteral, Error> {
     prefixed_numeric("0o", IntegerType::Oct, AsChar::is_oct_digit).parse(input)
 }
 
-pub fn hex_literal(input: &str) -> IResult<&str, IntegerLiteral> {
+pub fn hex_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, IntegerLiteral, Error> {
     prefixed_numeric("0x", IntegerType::Hex, AsChar::is_hex_digit).parse(input)
 }
-pub fn dec_literal(input: &str) -> IResult<&str, IntegerLiteral> {
+pub fn dec_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, IntegerLiteral, Error> {
     num_literal_no_prefix(AsChar::is_dec_digit)
         .map(|src| IntegerLiteral {
             ty: IntegerType::Dec,
@@ -125,34 +159,33 @@ pub fn dec_literal(input: &str) -> IResult<&str, IntegerLiteral> {
         .parse(input)
 }
 //
-pub fn int_literal(input: &str) -> IResult<&str, IntegerLiteral> {
-    hex_literal
-        .or(oct_literal)
-        .or(bin_literal)
-        .or(dec_literal)
-        .and(opt(numeric_suffix))
-        .map(|(mut lit, suf)| {
-            lit.suffix = suf;
-            lit
-        })
-        .parse(input)
+pub fn int_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, IntegerLiteral, Error> {
+    IntegerLiteral::from_parse(input)
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Unparse)]
+#[unparse(prefix('e'))]
 pub struct FloatExponent<'data> {
+    #[unparse({self.sign.map(|s| if s { '+' } else {'-'})})]
     sign: Option<bool>,
     value: &'data str,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Unparse, UnparseDisplay)]
 pub struct FloatLiteral<'data> {
     int: &'data str,
+    #[unparse({self.frac.unwrap_or("")})]
     frac: Option<&'data str>,
     exp: Option<FloatExponent<'data>>,
+    #[unparse({self.suffix.unwrap_or("")})]
     suffix: Option<&'data str>,
 }
 
-pub fn float_exponent(input: &str) -> IResult<&str, FloatExponent> {
+pub fn float_exponent<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, FloatExponent, Error> {
     satisfy(|c| c == 'e' || c == 'E')
         .and(opt(
             value(true, nchar::char('+')).or(value(false, nchar::char('-')))
@@ -163,39 +196,49 @@ pub fn float_exponent(input: &str) -> IResult<&str, FloatExponent> {
         .parse(input)
 }
 
-pub fn float_literal(input: &str) -> IResult<&str, FloatLiteral> {
-    (recognize(dec_literal)
-        .and(opt(nchar::char('.').and(recognize(dec_literal))))
-        .and(float_exponent)
-        .and(opt(suffix))
-        .map(|(((int, frac), exp), suffix)| FloatLiteral {
-            int,
-            frac: frac.map(|(_, frac)| frac),
-            exp: Some(exp),
-            suffix,
-        }))
-    .or(recognize(dec_literal)
-        .and(nchar::char('.'))
-        .and(recognize(dec_literal))
-        .and(opt(numeric_suffix))
-        .map(|(((int, _), frac), suffix)| FloatLiteral {
-            int,
-            frac: Some(frac),
-            exp: None,
-            suffix,
-        }))
-    .or(recognize(dec_literal)
-        .and(nchar::char('.'))
-        .and(eof.or(peek(recognize(satisfy(|c| {
-            c != '.' && c != '_' && !is_xid_start(c)
-        })))))
-        .map(|((int, _), _)| FloatLiteral {
-            int,
-            frac: None,
-            exp: None,
-            suffix: None,
-        }))
-    .parse(input)
+impl<'data> Parsed<&'data str> for FloatLiteral<'data> {
+    fn from_parse<Error: ParseError<&'data str>>(
+        input: &'data str,
+    ) -> IResult<&'data str, Self, Error> {
+        (recognize(dec_literal)
+            .and(opt(nchar::char('.').and(recognize(dec_literal))))
+            .and(float_exponent)
+            .and(opt(suffix))
+            .map(|(((int, frac), exp), suffix)| FloatLiteral {
+                int,
+                frac: frac.map(|(_, frac)| frac),
+                exp: Some(exp),
+                suffix,
+            }))
+        .or(recognize(dec_literal)
+            .and(nchar::char('.'))
+            .and(recognize(dec_literal))
+            .and(opt(numeric_suffix))
+            .map(|(((int, _), frac), suffix)| FloatLiteral {
+                int,
+                frac: Some(frac),
+                exp: None,
+                suffix,
+            }))
+        .or(recognize(dec_literal)
+            .and(nchar::char('.'))
+            .and(eof.or(peek(recognize(satisfy(|c| {
+                c != '.' && c != '_' && !is_xid_start(c)
+            })))))
+            .map(|((int, _), _)| FloatLiteral {
+                int,
+                frac: None,
+                exp: None,
+                suffix: None,
+            }))
+        .parse(input)
+    }
+}
+
+pub fn float_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, FloatLiteral, Error> {
+    FloatLiteral::from_parse(input)
 }
 
 #[cfg(test)]
@@ -260,7 +303,7 @@ pub(crate) mod tests {
         }
     );
 
-    test_parse_complex!(float_literal_a, float_literal;
+    test_parse_complex!(float_literal_a, float_literal::<nom::error::VerboseError<_>>;
         int in DEC_LITERAL,
         frac in string_regex(&format!(r#"(\.({DEC_LITERAL}))?"#)).unwrap(),
         exp_prefix in "[eE]",
@@ -287,7 +330,7 @@ pub(crate) mod tests {
         }
     );
 
-    test_parse_complex!(float_literal_b, float_literal;
+    test_parse_complex!(float_literal_b, float_literal::<nom::error::VerboseError<_>>;
         int in DEC_LITERAL,
         frac in DEC_LITERAL
         => &format!("{int}.{frac}")
@@ -299,7 +342,7 @@ pub(crate) mod tests {
         }
     );
 
-    test_parse_complex!(float_literal_c, float_literal;
+    test_parse_complex!(float_literal_c, float_literal::<nom::error::VerboseError<_>>;
         int in DEC_LITERAL,
         end in r#"([^[:digit:]._\p{XID_Start}])?"#
         => &format!("{int}.{end}")

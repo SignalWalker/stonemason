@@ -11,3 +11,9 @@ syn = { version = "^2", features = ["full", "printing", "extra-traits"] }
 quote = "^1"
 proc-macro2 = "^1"
 thiserror = "^1"
+
+# tracing = {optional = true, version = "^0.1"}
+
+[features]
+# default = [ "tracing" ]
+# tracing = [ "dep:tracing" ]

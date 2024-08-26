@@ -73,8 +73,8 @@ pub fn impl_parsed_for_tuple(_input: proc_macro::TokenStream) -> proc_macro::Tok
         quote! {
             #[automatically_derived]
             impl < #(#impl_generics),* > Parsed<Input> for ( #(#ty_generics,)* ) {
-                fn from_parse(input: Input) -> nom::IResult<Input, Self> {
-                    A::from_parse #(.and(#parses::from_parse))* .map(|#map_pat| (#(#map_expr,)*)).parse(input)
+                fn from_parse<Error: ParseError<Input>>(input: Input) -> nom::IResult<Input, Self, Error> {
+                    nom::error::context(::std::stringify!(( #(#ty_generics,)* )), A::from_parse #(.and(#parses::from_parse))* .map(|#map_pat| (#(#map_expr,)*))).parse(input)
                 }
             }
         }

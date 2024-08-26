@@ -17,7 +17,7 @@ use proptest_derive::Arbitrary;
 use proptest::{strategy::Strategy, string::string_regex};
 use stonemason_proc::{Unparse, UnparseDisplay};
 
-use crate::de::parse::{suffix, Unparse};
+use crate::de::parse::{suffix, ParseError, Parsed, Unparse};
 
 mod byte;
 pub use byte::*;
@@ -31,7 +31,9 @@ pub enum QuoteEscape {
     Double,
 }
 
-pub fn quote_escape(input: &str) -> IResult<&str, QuoteEscape> {
+pub fn quote_escape<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, QuoteEscape, Error> {
     preceded(
         nchar::char('\\'),
         value(QuoteEscape::Single, nchar::char('\''))
@@ -79,7 +81,9 @@ impl From<AsciiEscape> for char {
     }
 }
 
-pub fn ascii_escape(input: &str) -> IResult<&str, AsciiEscape> {
+pub fn ascii_escape<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, AsciiEscape, Error> {
     preceded(
         nchar::char('\\'),
         (preceded(
@@ -106,7 +110,9 @@ impl From<char> for UnicodeEscape {
     }
 }
 
-pub fn unicode_escape(input: &str) -> IResult<&str, UnicodeEscape> {
+pub fn unicode_escape<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, UnicodeEscape, Error> {
     map_opt(
         preceded(
             tag(r"\u"),
@@ -167,19 +173,29 @@ pub struct CharLiteral<'suffix> {
     suffix: Option<&'suffix str>,
 }
 
-pub fn char_literal(input: &str) -> IResult<&str, CharLiteral> {
-    delimited(
-        nchar::char('\''),
-        none_of(&['\'', '\\', '\n', '\r', '\t'][..])
-            .map(CharLiteralInner::Char)
-            .or(Parser::into(quote_escape))
-            .or(Parser::into(ascii_escape))
-            .or(Parser::into(unicode_escape)),
-        nchar::char('\''),
-    )
-    .and(opt(suffix))
-    .map(|(inner, suffix)| CharLiteral { inner, suffix })
-    .parse(input)
+impl<'suffix> Parsed<&'suffix str> for CharLiteral<'suffix> {
+    fn from_parse<Error: ParseError<&'suffix str>>(
+        input: &'suffix str,
+    ) -> IResult<&'suffix str, Self, Error> {
+        delimited(
+            nchar::char::<_, Error>('\''),
+            none_of::<_, _, Error>(&['\'', '\\', '\n', '\r', '\t'][..])
+                .map(CharLiteralInner::Char)
+                .or(Parser::into::<_, Error>(quote_escape::<Error>))
+                .or(Parser::into::<_, Error>(ascii_escape::<Error>))
+                .or(Parser::into::<_, Error>(unicode_escape::<Error>)),
+            nchar::char::<_, Error>('\''),
+        )
+        .and(opt(suffix))
+        .map(|(inner, suffix)| CharLiteral { inner, suffix })
+        .parse(input)
+    }
+}
+
+pub fn char_literal<'data, Error: ParseError<&'data str>>(
+    input: &'data str,
+) -> IResult<&'data str, CharLiteral, Error> {
+    CharLiteral::from_parse(input)
 }
 
 #[cfg(test)]

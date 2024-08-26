@@ -31,39 +31,69 @@ pub use meta::*;
 mod expr;
 pub use expr::*;
 
+mod pattern;
+pub use pattern::*;
+
+#[cfg(not(feature = "tracing-extra"))]
+pub trait ParseError<Input>: nom::error::ParseError<Input> {}
+
+#[cfg(not(feature = "tracing-extra"))]
+impl<Input, Error: nom::error::ParseError<Input>> ParseError<Input> for Error {}
+
+#[cfg(feature = "tracing-extra")]
+pub trait ParseError<Input>:
+    nom::error::ParseError<Input>
+    + std::fmt::Display
+    + std::fmt::Debug
+    + nom::error::ContextError<Input>
+{
+}
+
+#[cfg(feature = "tracing-extra")]
+impl<
+        Input,
+        Error: nom::error::ParseError<Input>
+            + std::fmt::Display
+            + std::fmt::Debug
+            + nom::error::ContextError<Input>,
+    > ParseError<Input> for Error
+{
+}
+
 /// Types that can be parsed from an input `Input`.
 pub trait Parsed<Input>
 where
     Self: Sized,
 {
-    /// Parse `input` into an instance of `Self`.
-    #[cfg(not(feature = "nightly"))]
-    fn from_parse(input: Input) -> IResult<Input, Self>;
-    // i don't remember why this needed to be nightly-only
-    #[cfg(feature = "nightly")]
-    type Error = nom::error::Error<Input>;
-    #[cfg(feature = "nightly")]
-    fn from_parse(input: Input) -> IResult<Input, Self, Self::Error>;
+    fn from_parse<Error: ParseError<Input>>(input: Input) -> IResult<Input, Self, Error>;
 }
 
 /// Parse `Input` to `Output`, collapsing errors to `None`.
 impl<I: Clone, T: Parsed<I>> Parsed<I> for Option<T> {
-    fn from_parse(input: I) -> IResult<I, Self> {
-        nom::combinator::opt(T::from_parse).parse(input)
+    fn from_parse<Error: ParseError<I>>(input: I) -> nom::IResult<I, Self, Error> {
+        nom::error::context(
+            "Option",
+            nom::combinator::opt::<I, _, Error, _>(T::from_parse),
+        )
+        .parse(input)
     }
 }
 
 /// Parse `Input` to `Output`, boxing the result.
 impl<I: Clone, T: Parsed<I>> Parsed<I> for Box<T> {
-    fn from_parse(input: I) -> IResult<I, Self> {
+    fn from_parse<Error: ParseError<I>>(input: I) -> nom::IResult<I, Self, Error> {
         T::from_parse.map(Box::new).parse(input)
     }
 }
 
 /// Parse `Input` to `Output`, discarding the result.
 impl<Input: Clone, Output: Parsed<Input>> Parsed<Input> for std::marker::PhantomData<Output> {
-    fn from_parse(input: Input) -> nom::IResult<Input, Self> {
-        nom::combinator::value(Self, Output::from_parse).parse(input)
+    fn from_parse<Error: ParseError<Input>>(input: Input) -> nom::IResult<Input, Self, Error> {
+        nom::error::context(
+            "PhantomData",
+            nom::combinator::value::<Input, _, _, Error, _>(Self, Output::from_parse),
+        )
+        .parse(input)
     }
 }
 
@@ -122,7 +152,7 @@ macro_rules! impl_unparse_for_iter {
 
 impl_unparse_for_iter!(T; Vec<T>, [T]);
 // impl_unparse_for_display!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, f32, f64);
-impl_unparse_for_display!(str, String, char);
+impl_unparse_for_display!(str, String, char, &str);
 
 impl<T: Unparse> Unparse for Box<T> {
     fn unparse(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -147,7 +177,7 @@ mod tests {
             proptest::proptest! {
                 #[test]
                 fn $f($input in $generator) {
-                    assert_eq!($crate::de::parse::$f(&$input), Ok(($exp_left, $exp_res)))
+                    assert_eq!($crate::de::parse::$f::<nom::error::VerboseError<_>>(&$input), Ok(($exp_left, $exp_res)))
                 }
             }
         };
@@ -170,7 +200,7 @@ mod tests {
             }
         };
         ($f:ident; $($arg:ident in $generator:expr),+ => $mk_input:expr => $exp_left:expr; $exp_res:expr) => {
-            test_parse_complex!($f, $crate::de::parse::$f; $($arg in $generator),+ => $mk_input => $exp_left; $exp_res);
+            test_parse_complex!($f, $crate::de::parse::$f::<nom::error::VerboseError<_>>; $($arg in $generator),+ => $mk_input => $exp_left; $exp_res);
             // proptest::proptest! {
             //     #[test]
             //     fn $f($($arg in $generator),+) {

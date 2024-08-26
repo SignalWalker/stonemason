@@ -1,0 +1,17 @@
+[package]
+name = "engrave"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stonemason = { path = "../.." }
+
+nom = { version = "^7.1" }
+
+clap = { version = "^4.4", features = [ "derive", "env" ] }
+tracing = { version = "^0.1", features = [] }
+tracing-subscriber = { version = "^0.3", features = [ "time", "env-filter", "parking_lot", "local-time", "json" ] }
+
+time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
+
+thiserror = "^1"

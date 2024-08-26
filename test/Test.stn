@@ -1,0 +1,40 @@
+#! /usr/bin/env true
+
+// Line Comment
+//! Line Doc (Inner)
+/// Line Doc (Outer)
+/* Block
+Comment */
+/*! Block Doc
+(Inner) */
+/** Block Doc
+(Outer) */
+
+#![InnerAttribute]#![InnerAttribute2]
+#![InnerAttribute3]
+
+#![InnerAttribute4]
+
+#![
+InnerAttributeWithSpace
+]
+
+#[OuterAttribute]
+mod bonk;
+
+mod bonk2 {
+	// bonk comment
+}
+
+pub mod bonk3 {
+	// bonk3....
+}
+
+extern fn bonk();
+
+fn main() {
+	// bonk4.......
+	let buh = "bonk";
+	buh;
+	return buh;
+}
